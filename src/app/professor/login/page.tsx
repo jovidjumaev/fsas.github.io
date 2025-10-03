@@ -76,7 +76,7 @@ export default function ProfessorLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50/30 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-colors duration-300">
       {/* Background Animations */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0" style={{
