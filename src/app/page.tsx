@@ -1,144 +1,599 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
+import { 
+  GraduationCap, 
+  BookOpen, 
+  QrCode, 
+  Activity, 
+  Shield, 
+  Smartphone,
+  BarChart3,
+  CheckCircle2,
+  ArrowRight,
+  Zap,
+  Users,
+  Clock,
+  Sparkles,
+  Moon,
+  Sun
+} from 'lucide-react';
 
-export default function HomePage() {
-  const [supabaseStatus, setSupabaseStatus] = useState('Testing...');
-  const [tableData, setTableData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export default function LandingPage() {
+  const router = useRouter();
+  const { user, userRole, loading } = useAuth();
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
-    testSupabaseConnection();
+    // Check for saved dark mode preference
+    const savedMode = localStorage.getItem('darkMode') === 'true';
+    setIsDarkMode(savedMode);
+    if (savedMode) {
+      document.documentElement.classList.add('dark');
+    }
   }, []);
 
-  const testSupabaseConnection = async () => {
-    try {
-      // Test basic connection
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError) {
-        setSupabaseStatus(`❌ Auth Error: ${authError.message}`);
-        return;
-      }
-
-      // Test table access - use new 'classes' table
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .limit(5);
-
-      if (classesError) {
-        setSupabaseStatus(`❌ Database Error: ${classesError.message}`);
-        return;
-      }
-
-      setSupabaseStatus('✅ Supabase Connected Successfully!');
-      setTableData({
-        classes: classesData,
-        totalClasses: classesData.length
-      });
-    } catch (error: any) {
-      setSupabaseStatus(`❌ Connection Error: ${error.message}`);
-    } finally {
-      setIsLoading(false);
+  const toggleDarkMode = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem('darkMode', String(newMode));
+    if (newMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center max-w-2xl mx-auto p-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-6">
-          FSAS - Furman Smart Attendance System
-        </h1>
-        <p className="text-lg text-gray-600 mb-8">
-          Welcome to the Smart Attendance System! The application is running successfully.
-        </p>
-        
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-          <h2 className="text-xl font-semibold mb-4">System Status</h2>
-          <div className="space-y-2 text-left">
-            <p>✅ Frontend: Running on port 3000</p>
-            <p>✅ Backend: Running on port 3001</p>
-            <p>✅ Next.js: Compiled successfully</p>
-            <p>✅ TypeScript: Working</p>
-            <p>✅ Tailwind CSS: Loaded</p>
-            <p className={supabaseStatus.includes('✅') ? 'text-green-600' : 'text-red-600'}>
-              {isLoading ? '🔄 Supabase: Testing connection...' : supabaseStatus}
-            </p>
-          </div>
+  useEffect(() => {
+    if (!loading && user && userRole) {
+      if (userRole === 'student') {
+        router.push('/student/dashboard');
+      } else if (userRole === 'professor') {
+        router.push('/professor/dashboard');
+      }
+    }
+  }, [user, userRole, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center relative overflow-hidden transition-colors duration-300">
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `
+              linear-gradient(to right, rgb(59 130 246 / 0.03) 1px, transparent 1px),
+              linear-gradient(to bottom, rgb(59 130 246 / 0.03) 1px, transparent 1px)
+            `,
+            backgroundSize: '60px 60px',
+            animation: 'gridMove 20s linear infinite'
+          }}></div>
         </div>
+        <div className="text-center relative z-10">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-200 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 mx-auto mb-4"></div>
+          <p className="text-gray-700 dark:text-gray-300 font-medium">Loading...</p>
+        </div>
+        <style jsx global>{`
+          @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(60px, 60px); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
-        {tableData && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
-            <h3 className="font-semibold text-green-900 mb-2">Database Test Results:</h3>
-            <div className="text-green-800 text-sm text-left">
-              <p>✅ Classes table accessible</p>
-              <p>✅ Found {tableData.totalClasses} classes in database</p>
-              <p>✅ All database tables are working correctly</p>
-              
-              {tableData.classes && tableData.classes.length > 0 && (
-                <div className="mt-3">
-                  <p className="font-semibold mb-2">📚 Classes Found:</p>
-                  <ul className="space-y-1">
-                    {tableData.classes.map((cls: any, index: number) => (
-                      <li key={index} className="text-xs">
-                        • {cls.code}: {cls.name} 
-                        {cls.room_location && ` (${cls.room_location})`}
-                        {cls.schedule_info && ` - ${cls.schedule_info}`}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-colors duration-300">
+      {/* Subtle Grid Pattern */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `
+            linear-gradient(to right, rgb(59 130 246 / 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgb(59 130 246 / 0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: '60px 60px'
+        }}></div>
+      </div>
 
-        {!isLoading && tableData && tableData.totalClasses === 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-8">
-            <h3 className="font-semibold text-yellow-900 mb-2">Database is Empty</h3>
-            <div className="text-yellow-800 text-sm text-left">
-              <p>📊 The database tables are working but contain no data yet.</p>
-              <p>🔗 This is expected due to foreign key constraints.</p>
-              <p>📝 To add data, you need to:</p>
-              <ol className="list-decimal list-inside mt-2 space-y-1">
-                <li>Create users via Supabase Auth first</li>
-                <li>Then add user profiles</li>
-                <li>Then add courses and other data</li>
-              </ol>
-            </div>
-          </div>
-        )}
+      {/* Floating Glowing Orbs - Slow Movement */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 -left-40 w-96 h-96 bg-blue-500/8 rounded-full blur-3xl animate-float-orb-slow"></div>
+        <div className="absolute -top-40 right-0 w-96 h-96 bg-cyan-500/8 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '5s' }}></div>
+        <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-blue-600/8 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '10s' }}></div>
+      </div>
 
-        <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">System Ready!</h3>
-            <ol className="text-blue-800 text-sm space-y-1 text-left">
-              <li>✅ Database schema applied</li>
-              <li>✅ Supabase connection working</li>
-              <li>✅ All tables accessible</li>
-              <li>✅ Ready for data operations</li>
-            </ol>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button 
-              onClick={testSupabaseConnection}
-              disabled={isLoading}
-              className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {isLoading ? 'Testing...' : 'Test Connection Again'}
-            </button>
-            <button 
-              onClick={() => window.open('https://supabase.com/dashboard', '_blank')}
-              className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 transition-colors"
-            >
-              Open Supabase Dashboard
-            </button>
-          </div>
+      {/* Gentle QR Pattern */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-1/4 left-20 grid grid-cols-3 gap-1 opacity-0 animate-qr-gentle" style={{ animationDelay: '0s' }}>
+          {[...Array(9)].map((_, i) => (
+            <div key={i} className={`w-3 h-3 ${[0,2,4,6,8].includes(i) ? 'bg-blue-600/15' : 'bg-transparent'}`}></div>
+          ))}
         </div>
       </div>
+
+      {/* Slow Scanning Beam */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute w-full h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent animate-scan-slow"></div>
+      </div>
+
+      {/* Falling Geometric Figures */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        {/* Left side - Square */}
+        <div className="absolute left-[15%] w-12 h-12 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg animate-fall-slow shadow-lg shadow-blue-500/20"></div>
+        {/* Right side - Circle */}
+        <div className="absolute right-[15%] w-12 h-12 border-2 border-blue-400/40 bg-blue-400/5 rounded-full animate-fall-slow shadow-lg shadow-blue-400/20" style={{ animationDelay: '7.5s' }}></div>
+      </div>
+
+      {/* Content */}
+      <div className="relative">
+        {/* Header */}
+        <header className="border-b border-gray-200/80 dark:border-gray-700/80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-sm dark:shadow-gray-800/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link href="/" className="flex items-center space-x-3 group cursor-pointer">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl blur-md opacity-50 group-hover:opacity-75 transition-opacity"></div>
+                  <div className="relative w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <Zap className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent group-hover:from-blue-700 group-hover:to-cyan-700 transition-all">
+                    FSAS
+                  </h1>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Furman Smart Attendance System</p>
+                </div>
+              </Link>
+              <div className="flex items-center space-x-4">
+                {/* Dark Mode Toggle */}
+                <button
+                  onClick={toggleDarkMode}
+                  className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Toggle dark mode"
+                >
+                  {isDarkMode ? (
+                    <Sun className="w-5 h-5 text-yellow-500" />
+                  ) : (
+                    <Moon className="w-5 h-5 text-gray-700" />
+                  )}
+                </button>
+                
+                <Link 
+                  href="#get-started" 
+                  className="group relative inline-flex items-center justify-center px-6 py-2.5 overflow-hidden font-semibold text-white transition-all duration-300 ease-out bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full hover:scale-105 hover:shadow-xl hover:shadow-blue-500/50"
+                >
+                  <span className="absolute right-0 w-8 h-32 -mt-12 transition-all duration-1000 transform translate-x-12 bg-white opacity-10 rotate-12 group-hover:-translate-x-40 ease"></span>
+                  <span className="relative flex items-center space-x-2">
+                    <span className="text-sm">Get Started</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto text-center">
+            <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-full mb-8">
+              <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">QR-Powered Attendance System</span>
+            </div>
+            
+            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black text-gray-900 dark:text-white mb-6 leading-none">
+              Attendance Tracking
+              <br />
+              <span className="bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 dark:from-blue-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent animate-gradient">
+                Elevated
+              </span>
+            </h1>
+            
+            <p className="text-xl text-gray-700 dark:text-gray-300 max-w-3xl mx-auto mb-16 leading-relaxed">
+              Revolutionize classroom management with intelligent QR technology, 
+              real-time insights, and enterprise-grade security
+            </p>
+
+            {/* Stats */}
+            <div className="flex flex-wrap justify-center gap-12 mb-20">
+              <div className="text-center group cursor-pointer">
+                <div className="flex items-center justify-center mb-2">
+                  <Clock className="w-6 h-6 text-blue-600 dark:text-blue-400 mr-2 group-hover:scale-110 transition-transform" />
+                  <div className="text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">2s</div>
+                </div>
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Check-in Time</div>
+              </div>
+              <div className="text-center group cursor-pointer">
+                <div className="flex items-center justify-center mb-2">
+                  <Users className="w-6 h-6 text-blue-600 dark:text-blue-400 mr-2 group-hover:scale-110 transition-transform" />
+                  <div className="text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">99.9%</div>
+                </div>
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Accuracy</div>
+              </div>
+              <div className="text-center group cursor-pointer">
+                <div className="flex items-center justify-center mb-2">
+                  <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400 mr-2 group-hover:scale-110 transition-transform" />
+                  <div className="text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">100%</div>
+                </div>
+                <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Secure</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Portal Cards */}
+        <section id="get-started" className="pb-24 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Student Portal */}
+              <Link href="/student/login" className="group">
+                <div className="relative h-full">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-3xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+                  
+                  <div className="relative h-full bg-white dark:bg-gray-800 rounded-3xl border-2 border-gray-100 dark:border-gray-700 p-10 group-hover:border-blue-300 dark:group-hover:border-blue-600 transition-all duration-300">
+                    <div className="flex items-start justify-between mb-8">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-cyan-600 blur-2xl opacity-30 rounded-2xl"></div>
+                        <div className="relative w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                          <GraduationCap className="w-10 h-10 text-white" />
+                        </div>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/30 rounded-full flex items-center justify-center group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
+                        <ArrowRight className="w-6 h-6 text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                    
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Student Portal</h2>
+                    <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed text-lg">
+                      Scan QR codes instantly, track your attendance, and access detailed analytics
+                    </p>
+                    
+                    <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white h-14 text-base font-bold rounded-2xl shadow-xl shadow-blue-600/30 group-hover:shadow-2xl group-hover:shadow-blue-600/40 transition-all">
+                      Sign In as Student
+                    </Button>
+                    
+                    <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center space-x-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">New student?</span>
+                      <Link href="/student/register" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
+                        Create Account →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+
+              {/* Professor Portal */}
+              <Link href="/professor/login" className="group">
+                <div className="relative h-full">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-3xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+                  
+                  <div className="relative h-full bg-white dark:bg-gray-800 rounded-3xl border-2 border-gray-100 dark:border-gray-700 p-10 group-hover:border-cyan-300 dark:group-hover:border-cyan-600 transition-all duration-300">
+                    <div className="flex items-start justify-between mb-8">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-600 to-blue-600 blur-2xl opacity-30 rounded-2xl"></div>
+                        <div className="relative w-20 h-20 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                          <BookOpen className="w-10 h-10 text-white" />
+                        </div>
+                      </div>
+                      <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-950/30 rounded-full flex items-center justify-center group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/50 transition-colors">
+                        <ArrowRight className="w-6 h-6 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                    
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Professor Portal</h2>
+                    <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed text-lg">
+                      Generate QR codes, monitor attendance in real-time, and gain powerful insights
+                    </p>
+                    
+                    <Button className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white h-14 text-base font-bold rounded-2xl shadow-xl shadow-cyan-600/30 group-hover:shadow-2xl group-hover:shadow-cyan-600/40 transition-all">
+                      Sign In as Professor
+                    </Button>
+                    
+                    <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center space-x-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">New professor?</span>
+                      <Link href="/professor/register" className="text-sm font-bold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">
+                        Create Account →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Features Section */}
+        <section className="py-24 px-4 sm:px-6 lg:px-8 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-50/30 dark:from-blue-950/15 to-transparent"></div>
+          
+          <div className="max-w-7xl mx-auto relative">
+            <div className="text-center mb-16">
+              <div className="inline-flex items-center space-x-2 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900 px-4 py-2 rounded-full mb-6 shadow-sm">
+                <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">Why Choose FSAS</span>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-black text-gray-900 dark:text-white mb-4">
+                Powerful Features
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                Everything you need for modern attendance management
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                { 
+                  icon: QrCode, 
+                  title: "Instant QR Scanning", 
+                  desc: "Generate and validate attendance with secure, time-limited QR codes",
+                  gradient: "from-blue-500 to-cyan-500"
+                },
+                { 
+                  icon: Activity, 
+                  title: "Live Monitoring", 
+                  desc: "Track attendance in real-time with instant notifications",
+                  gradient: "from-cyan-500 to-blue-500"
+                },
+                { 
+                  icon: Shield, 
+                  title: "Smart Security", 
+                  desc: "Device fingerprinting and geofencing prevent fraud",
+                  gradient: "from-blue-600 to-blue-500"
+                },
+                { 
+                  icon: BarChart3, 
+                  title: "Advanced Analytics", 
+                  desc: "Comprehensive dashboards with insights and trends",
+                  gradient: "from-cyan-600 to-cyan-500"
+                },
+                { 
+                  icon: Smartphone, 
+                  title: "Mobile First", 
+                  desc: "Perfect experience on any device and screen size",
+                  gradient: "from-blue-500 to-cyan-600"
+                },
+                { 
+                  icon: CheckCircle2, 
+                  title: "Role Management", 
+                  desc: "Granular access control for all user types",
+                  gradient: "from-cyan-500 to-blue-600"
+                }
+              ].map((feature, index) => (
+                <div 
+                  key={index} 
+                  className="group relative"
+                >
+                  {/* Glow effect on hover */}
+                  <div className={`absolute -inset-0.5 bg-gradient-to-r ${feature.gradient} rounded-2xl opacity-0 group-hover:opacity-20 blur transition-all duration-300`}></div>
+                  
+                  <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-8 border border-gray-200 dark:border-gray-700 group-hover:border-transparent group-hover:shadow-xl dark:group-hover:shadow-blue-500/20 transition-all duration-300">
+                    <div className="flex items-start space-x-4 mb-4">
+                      <div className={`relative shrink-0 w-14 h-14 bg-gradient-to-br ${feature.gradient} rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                        <feature.icon className="w-7 h-7 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {feature.title}
+                        </h3>
+                      </div>
+                    </div>
+                    <p className="text-gray-600 dark:text-gray-300 leading-relaxed text-sm">
+                      {feature.desc}
+                    </p>
+                    
+                    {/* Decorative element */}
+                    <div className="absolute bottom-0 right-0 w-20 h-20 bg-gradient-to-br from-transparent to-blue-50 dark:to-blue-950/30 rounded-tl-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section className="py-24 px-4 sm:px-6 lg:px-8 relative">
+          {/* Background gradient - more transparent to show animations */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-blue-50/20 to-white/80 dark:from-gray-900/80 dark:via-gray-800/30 dark:to-gray-900/80"></div>
+          
+          <div className="max-w-6xl mx-auto relative">
+            <div className="text-center mb-16">
+              <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-full mb-6">
+                <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent">Quick Setup</span>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-black text-gray-900 dark:text-white mb-4">
+                Get Started in 3 Steps
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                From zero to tracking attendance in less than a minute
+              </p>
+            </div>
+
+            <div className="relative">
+              {/* Connection line */}
+              <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-200 via-cyan-200 to-blue-200 dark:from-blue-900 dark:via-cyan-900 dark:to-blue-900 -translate-y-1/2 z-0"></div>
+              
+              <div className="grid md:grid-cols-3 gap-8 relative z-10">
+                {[
+                  { 
+                    num: "01", 
+                    title: "Select Role", 
+                    desc: "Choose Student or Professor portal based on your needs",
+                    icon: Users,
+                    gradient: "from-blue-500 to-cyan-500"
+                  },
+                  { 
+                    num: "02", 
+                    title: "Sign In", 
+                    desc: "Access your account with secure authentication",
+                    icon: Shield,
+                    gradient: "from-cyan-500 to-blue-600"
+                  },
+                  { 
+                    num: "03", 
+                    title: "Start Tracking", 
+                    desc: "Scan, monitor, and analyze attendance instantly",
+                    icon: Zap,
+                    gradient: "from-blue-600 to-cyan-600"
+                  }
+                ].map((step, index) => (
+                  <div key={index} className="relative group">
+                    {/* Glow effect */}
+                    <div className={`absolute -inset-1 bg-gradient-to-br ${step.gradient} rounded-3xl opacity-0 group-hover:opacity-30 blur-xl transition-all duration-500`}></div>
+                    
+                    <div className="relative bg-white dark:bg-gray-800 rounded-3xl p-8 border-2 border-gray-100 dark:border-gray-700 group-hover:border-transparent shadow-lg group-hover:shadow-2xl dark:group-hover:shadow-blue-500/20 transition-all duration-300 h-full">
+                      {/* Number badge */}
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="relative">
+                          <div className={`absolute inset-0 bg-gradient-to-br ${step.gradient} blur-xl opacity-40 rounded-2xl`}></div>
+                          <div className={`relative w-16 h-16 bg-gradient-to-br ${step.gradient} rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
+                            <span className="text-2xl font-black text-white">{step.num}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Icon in circle */}
+                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${step.gradient} bg-opacity-10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+                          <step.icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      </div>
+                      
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:bg-clip-text group-hover:from-blue-600 group-hover:to-cyan-600 dark:group-hover:from-blue-400 dark:group-hover:to-cyan-400 transition-all duration-300">
+                        {step.title}
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                        {step.desc}
+                      </p>
+                      
+                      {/* Progress indicator */}
+                      <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                        <div className="flex items-center space-x-2">
+                          <div className={`h-1 flex-1 rounded-full bg-gradient-to-r ${step.gradient} opacity-30`}></div>
+                          <div className={`h-1 flex-1 rounded-full ${index >= 1 ? `bg-gradient-to-r ${step.gradient} opacity-30` : 'bg-gray-200 dark:bg-gray-700'}`}></div>
+                          <div className={`h-1 flex-1 rounded-full ${index >= 2 ? `bg-gradient-to-r ${step.gradient} opacity-30` : 'bg-gray-200 dark:bg-gray-700'}`}></div>
+                        </div>
+                      </div>
+                      
+                      {/* Decorative corner element */}
+                      <div className="absolute -bottom-2 -right-2 w-20 h-20 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 dark:from-blue-500/10 dark:to-cyan-500/10 rounded-tl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Call to action */}
+            <div className="text-center mt-16">
+              <Link 
+                href="#get-started"
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-600/30 hover:shadow-2xl hover:shadow-blue-600/50 hover:scale-105 transition-all duration-300"
+              >
+                <span>Get Started Now</span>
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="border-t border-gray-100 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                © 2025 Furman University - Smart Attendance System
+              </p>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-300">System Online</span>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+
+      <style jsx global>{`
+        @keyframes float-orb-slow {
+          0%, 100% {
+            transform: translate(0, 0);
+            opacity: 0.08;
+          }
+          50% {
+            transform: translate(20px, -20px);
+            opacity: 0.12;
+          }
+        }
+        
+        @keyframes qr-gentle {
+          0%, 100% {
+            opacity: 0;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+        
+        @keyframes scan-slow {
+          0% {
+            top: -5px;
+            opacity: 0;
+          }
+          50% {
+            opacity: 0.5;
+          }
+          100% {
+            top: 100%;
+            opacity: 0;
+          }
+        }
+        
+        @keyframes fall-slow {
+          0% {
+            top: -60px;
+            opacity: 0;
+            transform: rotate(0deg);
+          }
+          5% {
+            opacity: 0.3;
+          }
+          95% {
+            opacity: 0.3;
+          }
+          100% {
+            top: 100%;
+            opacity: 0;
+            transform: rotate(180deg);
+          }
+        }
+        
+        @keyframes gradient {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        
+        /* Animation Classes */
+        .animate-float-orb-slow {
+          animation: float-orb-slow 20s ease-in-out infinite;
+        }
+        
+        .animate-qr-gentle {
+          animation: qr-gentle 15s ease-in-out infinite;
+        }
+        
+        .animate-scan-slow {
+          animation: scan-slow 20s ease-in-out infinite;
+        }
+        
+        .animate-fall-slow {
+          animation: fall-slow 15s linear infinite;
+        }
+        
+        .animate-gradient {
+          background-size: 200% 200%;
+          animation: gradient 3s ease infinite;
+        }
+      `}</style>
     </div>
   );
 }

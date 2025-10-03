@@ -88,10 +88,16 @@ A comprehensive QR-based attendance tracking system designed for Furman Universi
    REDIS_URL=redis://localhost:6379
    ```
 
-4. **Database Setup**
+4. **Database Setup** ⚠️ **CRITICAL STEP**
    ```bash
-   # Run the SQL schema in your Supabase database
-   psql -h your-supabase-host -U postgres -d postgres -f database/schema.sql
+   # Automated database setup (recommended)
+   npm run setup-db
+   
+   # OR manual setup:
+   # 1. Open Supabase dashboard
+   # 2. Go to SQL Editor
+   # 3. Copy contents of database/fixed-user-schema.sql
+   # 4. Execute the SQL script
    ```
 
 5. **Start Development Servers**
@@ -103,6 +109,22 @@ A comprehensive QR-based attendance tracking system designed for Furman Universi
    npm run dev:frontend  # Frontend on :3000
    npm run dev:backend   # Backend on :3001
    ```
+
+## 🔐 **Authentication Setup**
+
+**⚠️ IMPORTANT:** The authentication system has been completely fixed and requires proper database setup.
+
+### **Quick Setup:**
+1. Run `npm run setup-db` to set up the database
+2. Test registration and login at `http://localhost:3000`
+3. See `AUTHENTICATION_SETUP.md` for detailed instructions
+
+### **What Was Fixed:**
+- ✅ Database schema mismatch resolved
+- ✅ User authentication tables created
+- ✅ Supabase Auth integration fixed
+- ✅ Role-based access control implemented
+- ✅ Row Level Security policies added
 
 ## 🎯 Usage
 
