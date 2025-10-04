@@ -344,9 +344,9 @@ function StudentClassesContent() {
   }, [user]);
 
   const getAttendanceColor = (rate: number) => {
-    if (rate >= 90) return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
-    if (rate >= 75) return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
-    return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+    if (rate >= 90) return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900';
+    if (rate >= 75) return 'text-amber-600 bg-amber-100 dark:bg-amber-900';
+    return 'text-red-600 bg-red-100 dark:bg-red-900';
   };
 
   const filteredClasses = classes.filter(cls => {
@@ -425,7 +425,7 @@ function StudentClassesContent() {
                 </Button>
               </Link>
               <Link href="/student/classes">
-                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
+                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900 hover:bg-emerald-100 dark:hover:bg-emerald-800">
                   <BookOpen className="w-4 h-4 mr-2" />
                   Classes
                 </Button>
@@ -491,7 +491,7 @@ function StudentClassesContent() {
                   Enrolled this semester
                 </p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center ml-4">
                 <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
@@ -510,7 +510,7 @@ function StudentClassesContent() {
                   Across all classes
                 </p>
               </div>
-              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-xl flex items-center justify-center ml-4">
                 <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
@@ -529,7 +529,7 @@ function StudentClassesContent() {
                   Starred classes
                 </p>
               </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center ml-4">
                 <Star className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
@@ -548,7 +548,7 @@ function StudentClassesContent() {
                   Classes today
                 </p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center ml-4">
                 <Calendar className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>

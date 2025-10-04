@@ -93,16 +93,10 @@ export class NameChangeService {
     reason?: string
   ): Promise<NameChangeResult> {
     try {
-      // First check if user can change name
-      const { data: canChange, error: canChangeError } = await (supabase as any).rpc('can_change_name', {
-        user_uuid: userId
-      });
-
-      if (canChangeError) {
-        console.error('Error checking name change permission:', canChangeError);
-        // If the function doesn't exist, allow the change but log a warning
-        console.warn('Name change limit checking not available, allowing change');
-      } else if (!canChange) {
+      // Check name change limits using localStorage (fallback method)
+      const nameChangeInfo = await this.getNameChangeInfo(userId);
+      
+      if (!nameChangeInfo.canChange) {
         return {
           success: false,
           message: 'You have reached the maximum number of name changes for this month (2). Please wait until next month to change your name again.'
@@ -124,69 +118,39 @@ export class NameChangeService {
         };
       }
 
-      // Record the name change
-      const { data, error } = await (supabase as any).rpc('record_name_change', {
-        user_uuid: userId,
-        old_first_name: oldFirstName,
-        old_last_name: oldLastName,
-        new_first_name: newFirstName.trim(),
-        new_last_name: newLastName.trim(),
-        change_reason: reason || 'Profile update'
-      });
-
-      if (error) {
-        console.error('Error recording name change:', error);
-        // If the function doesn't exist, continue without recording the change
-        console.warn('Name change recording not available, continuing without tracking');
-      } else if (!data) {
-        return {
-          success: false,
-          message: 'Failed to update name. You may have reached the monthly limit.'
-        };
-      }
-
-      // Track the name change in localStorage
+      // Record the name change in localStorage
       try {
-        if (typeof window === 'undefined') {
-          // Server-side, skip localStorage tracking
-          return {
-            success: true,
-            message: 'Name updated successfully'
-          };
-        }
-        
         const storageKey = `name_changes_${userId}`;
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         
-        const storedData = localStorage.getItem(storageKey);
-        let data = storedData ? JSON.parse(storedData) : { count: 0, month: currentMonth, year: currentYear, lastChange: null };
+        // Get existing data
+        const existingData = localStorage.getItem(storageKey);
+        let data = existingData ? JSON.parse(existingData) : { count: 0, month: currentMonth, year: currentYear };
         
-        // Reset if different month
+        // Reset if new month
         if (data.month !== currentMonth || data.year !== currentYear) {
-          data = { count: 0, month: currentMonth, year: currentYear, lastChange: null };
+          data = { count: 0, month: currentMonth, year: currentYear };
         }
         
-        // Increment count and update last change
+        // Increment count
         data.count += 1;
-        data.lastChange = now.toISOString();
+        
+        // Save back to localStorage
         localStorage.setItem(storageKey, JSON.stringify(data));
         
-        const remainingChanges = Math.max(0, 2 - data.count);
-        
-        return {
-          success: true,
-          message: `Name updated successfully! You have ${remainingChanges} name changes remaining this month.`,
-          remainingChanges
-        };
+        console.log('Name change recorded in localStorage:', data);
       } catch (error) {
-        // If we can't track the change, just return success
-        return {
-          success: true,
-          message: 'Name updated successfully!'
-        };
+        console.error('Error recording name change in localStorage:', error);
+        // Continue anyway - this is not critical
       }
+
+      // Return success
+      return {
+        success: true,
+        message: 'Name updated successfully!'
+      };
     } catch (error) {
       console.error('Error in changeName:', error);
       return {

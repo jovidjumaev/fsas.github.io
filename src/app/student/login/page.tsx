@@ -137,23 +137,7 @@ export default function StudentLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-colors duration-300">
-      {/* Background Animations */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            linear-gradient(to right, rgb(59 130 246 / 0.03) 1px, transparent 1px),
-            linear-gradient(to bottom, rgb(59 130 246 / 0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px'
-        }}></div>
-      </div>
-
-      {/* Floating Orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/8 rounded-full blur-3xl animate-float-orb-slow"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-cyan-500/8 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '5s' }}></div>
-      </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
 
       {/* Header */}
       <header className="border-b border-gray-200/80 dark:border-gray-700/80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-sm dark:shadow-gray-800/50">
@@ -310,22 +294,6 @@ export default function StudentLogin() {
         </div>
       </div>
 
-      <style jsx global>{`
-        @keyframes float-orb-slow {
-          0%, 100% {
-            transform: translate(0, 0);
-            opacity: 0.08;
-          }
-          50% {
-            transform: translate(20px, -20px);
-            opacity: 0.12;
-          }
-        }
-        
-        .animate-float-orb-slow {
-          animation: float-orb-slow 20s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 }

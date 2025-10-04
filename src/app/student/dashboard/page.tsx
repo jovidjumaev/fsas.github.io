@@ -77,6 +77,7 @@ function StudentDashboardContent() {
   const [todayClasses, setTodayClasses] = useState<ClassSession[]>([]);
   const [recentAttendance, setRecentAttendance] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
@@ -99,6 +100,15 @@ function StudentDashboardContent() {
     if (savedMode) {
       document.documentElement.classList.add('dark');
     }
+  }, []);
+
+  // Update time every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
   }, []);
 
   const toggleDarkMode = () => {
@@ -164,6 +174,39 @@ function StudentDashboardContent() {
     if (!user) return;
     
     try {
+      // Check if names changed and handle name change tracking
+      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
+      
+      if (namesChanged) {
+        console.log('Names changed, checking name change limits...');
+        
+        // Import and use the name change service
+        const { NameChangeService } = await import('@/lib/name-change-service');
+        
+        // Check if user can change their name
+        const nameChangeInfo = await NameChangeService.getNameChangeInfo(user.id);
+        
+        if (!nameChangeInfo.canChange) {
+          throw new Error('Name change limit reached for this month. Please try again next month.');
+        }
+        
+        // Record the name change
+        const nameChangeResult = await NameChangeService.changeName(
+          user.id,
+          userProfile?.first_name || '',
+          userProfile?.last_name || '',
+          profileData.first_name,
+          profileData.last_name,
+          profileData.nameChangeReason || 'Name change via profile edit'
+        );
+        
+        if (!nameChangeResult.success) {
+          throw new Error(nameChangeResult.message);
+        }
+        
+        console.log('Name change recorded successfully:', nameChangeResult);
+      }
+      
       // Separate data for users table (only basic fields that exist)
       const usersTableData = {
         first_name: profileData.first_name,
@@ -190,9 +233,6 @@ function StudentDashboardContent() {
         console.error('Error updating users table:', usersError);
         throw new Error(`Failed to save profile: ${usersError.message}`);
       }
-      
-      // Update auth metadata for additional fields (only if names changed)
-      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
       
       // DISABLED: Auth update causes redirect to landing page
       // if (namesChanged) {
@@ -364,13 +404,13 @@ function StudentDashboardContent() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'present':
-        return 'text-green-600 bg-green-100 dark:bg-green-900/30';
+        return 'text-green-600 bg-green-100 dark:bg-green-900';
       case 'late':
-        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30';
+        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900';
       case 'absent':
-        return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+        return 'text-red-600 bg-red-100 dark:bg-red-900';
       default:
-        return 'text-gray-600 bg-gray-100 dark:bg-gray-900/30';
+        return 'text-gray-600 bg-gray-100 dark:bg-gray-900';
     }
   };
 
@@ -418,7 +458,7 @@ function StudentDashboardContent() {
             {/* Navigation */}
             <nav className="hidden lg:flex items-center space-x-1">
               <Link href="/student/dashboard">
-                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
+                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900 hover:bg-emerald-100 dark:hover:bg-emerald-800">
                   <Home className="w-4 h-4 mr-2" />
                   Dashboard
                 </Button>
@@ -451,6 +491,14 @@ function StudentDashboardContent() {
 
             {/* Right Side Actions */}
             <div className="flex items-center space-x-4">
+              {/* Time */}
+              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
               {/* Notifications */}
               <NotificationPanel />
 
@@ -485,10 +533,10 @@ function StudentDashboardContent() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-            Welcome back, {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Student'}! 👋
+            Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}{userProfile?.first_name ? `, ${userProfile.first_name}` : ''}! 👋
           </h1>
           <p className="text-xl text-slate-600 dark:text-slate-400">
-            {new Date().toLocaleDateString('en-US', { 
+            {currentTime.toLocaleDateString('en-US', { 
               weekday: 'long', 
               month: 'long', 
               day: 'numeric',
@@ -512,7 +560,7 @@ function StudentDashboardContent() {
                   This semester
                 </p>
               </div>
-              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-xl flex items-center justify-center ml-4">
                 <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
@@ -531,7 +579,7 @@ function StudentDashboardContent() {
                   Enrolled this semester
                 </p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center ml-4">
                 <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
@@ -550,7 +598,7 @@ function StudentDashboardContent() {
                   Scheduled sessions
                 </p>
               </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center ml-4">
                 <Calendar className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
@@ -569,7 +617,7 @@ function StudentDashboardContent() {
                   Days in a row
                 </p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center ml-4">
                 <Clock className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
@@ -605,7 +653,7 @@ function StudentDashboardContent() {
                           <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                             {classData.class_code}
                           </h3>
-                          <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold rounded-full">
+                          <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-400 text-xs font-semibold rounded-full">
                             {classData.status}
                           </span>
                         </div>
@@ -688,7 +736,7 @@ function StudentDashboardContent() {
                   <QrCode className="w-4 h-4 mr-3" />
                   Scan QR Code
                 </Button>
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-slate-300 dark:border-slate-600 rounded-lg">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900 border-slate-300 dark:border-slate-600 rounded-lg">
                   <BarChart3 className="w-4 h-4 mr-3" />
                   View Attendance
                 </Button>

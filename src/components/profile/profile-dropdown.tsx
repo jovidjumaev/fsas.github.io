@@ -17,7 +17,6 @@ import {
   Edit3
 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Card } from '../ui/card';
 
 interface ProfileDropdownProps {
   user: User | null;
@@ -151,9 +150,8 @@ export default function ProfileDropdown({
       {/* Dropdown Menu */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-50">
-          <Card className="p-0 border-0 shadow-none">
-            {/* Profile Header */}
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+          {/* Profile Header */}
+          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
               <div className="flex items-center space-x-4">
                 {/* Large Avatar */}
                 <div className="relative">
@@ -209,10 +207,10 @@ export default function ProfileDropdown({
                   </div>
                 </div>
               </div>
-            </div>
+          </div>
 
-            {/* Profile Information */}
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+          {/* Profile Information */}
+          <div className="p-4 border-b border-slate-200 dark:border-slate-700">
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Profile Information</h4>
               <div className="space-y-2">
                 <div className="flex items-center space-x-3 text-sm">
@@ -246,10 +244,10 @@ export default function ProfileDropdown({
                   </span>
                 </div>
               </div>
-            </div>
+          </div>
 
-            {/* Action Buttons */}
-            <div className="p-4 space-y-2">
+          {/* Action Buttons */}
+          <div className="p-4 space-y-2">
               <Button
                 onClick={() => {
                   onEditProfile();
@@ -283,8 +281,7 @@ export default function ProfileDropdown({
                 <LogOut className="w-4 h-4 mr-3" />
                 Sign Out
               </Button>
-            </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>

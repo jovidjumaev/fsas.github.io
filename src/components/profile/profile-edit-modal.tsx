@@ -66,8 +66,8 @@ export default function ProfileEditModal({
       setNameChangeReason('');
       setShowSuccess(false); // Reset success state on modal open
       
-      // Check name change info for students
-      if (userProfile?.role === 'student' && user) {
+      // Check name change info for students and professors
+      if ((userProfile?.role === 'student' || userProfile?.role === 'professor') && user) {
         checkNameChangeInfo();
       }
     }
@@ -125,57 +125,22 @@ export default function ProfileEditModal({
     setShowSuccess(true);
     
     try {
-      // Check if names have changed for students
-      if (userProfile?.role === 'student' && user) {
-        const namesChanged = NameChangeService.areNamesDifferent(
+      // Check if names have changed for students and professors
+      let namesChanged = false;
+      if ((userProfile?.role === 'student' || userProfile?.role === 'professor') && user) {
+        namesChanged = NameChangeService.areNamesDifferent(
           userProfile.first_name || '',
           userProfile.last_name || '',
           formData.first_name,
           formData.last_name
         );
         
-        if (namesChanged) {
-          // Use name change service for students
-          const result = await NameChangeService.changeName(
-            user.id,
-            userProfile.first_name || '',
-            userProfile.last_name || '',
-            formData.first_name,
-            formData.last_name,
-            nameChangeReason
-          );
-          
-          if (!result.success) {
-            setErrors({ nameChange: result.message });
-            setIsLoading(false);
-            return;
-          }
-          
-          // Update other fields normally
-          const otherFields = {
-            phone: formData.phone,
-            office_location: formData.office_location,
-            title: formData.title
-          };
-          
-          try {
-            await onSave({
-              first_name: formData.first_name,
-              last_name: formData.last_name,
-              ...otherFields
-            });
-          } catch (error) {
-            console.warn('Profile save had issues but continuing:', error);
-            // Don't throw error here - we still want to show success message
-          }
-        } else {
-          // No name change, proceed normally
-          try {
-            await onSave(formData);
-          } catch (error) {
-            console.warn('Profile save had issues but continuing:', error);
-            // Don't throw error here - we still want to show success message
-          }
+        // Always call onSave - let the parent component handle name change tracking
+        try {
+          await onSave(formData);
+        } catch (error) {
+          console.warn('Profile save had issues but continuing:', error);
+          // Don't throw error here - we still want to show success message
         }
       } else {
         // Non-student or no name change, proceed normally
@@ -190,7 +155,7 @@ export default function ProfileEditModal({
       // Success message already shown at the beginning
       
       // Refresh name change info if this was a name change
-      if (userProfile?.role === 'student' && user && namesChanged) {
+      if ((userProfile?.role === 'student' || userProfile?.role === 'professor') && user && namesChanged) {
         checkNameChangeInfo();
       }
       
@@ -300,8 +265,8 @@ export default function ProfileEditModal({
                 </div>
               </div>
               
-              {/* Name Change Info for Students */}
-              {userProfile?.role === 'student' && (
+              {/* Name Change Info for Students and Professors */}
+              {(userProfile?.role === 'student' || userProfile?.role === 'professor') && (
                 <div className="mt-4">
                   {isCheckingNameChange ? (
                     <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-400">

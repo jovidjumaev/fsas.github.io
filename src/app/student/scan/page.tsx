@@ -323,13 +323,13 @@ function StudentScanContent() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'present':
-        return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
+        return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900';
       case 'late':
-        return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
+        return 'text-amber-600 bg-amber-100 dark:bg-amber-900';
       case 'absent':
-        return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+        return 'text-red-600 bg-red-100 dark:bg-red-900';
       default:
-        return 'text-slate-600 bg-slate-100 dark:bg-slate-900/30';
+        return 'text-slate-600 bg-slate-100 dark:bg-slate-900';
     }
   };
 
@@ -372,7 +372,7 @@ function StudentScanContent() {
                 </Button>
               </Link>
               <Link href="/student/scan">
-                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
+                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900 hover:bg-emerald-100 dark:hover:bg-emerald-800">
                   <QrCode className="w-4 h-4 mr-2" />
                   Scan QR
                 </Button>
@@ -502,7 +502,7 @@ function StudentScanContent() {
                   <Button
                     onClick={stopScanning}
                     variant="outline"
-                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900"
                   >
                     <XCircle className="w-4 h-4 mr-2" />
                     Stop Scanning
@@ -523,8 +523,8 @@ function StudentScanContent() {
               {scanResult && (
                 <div className={`mt-6 p-4 rounded-xl border ${
                   scanResult.success 
-                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    ? 'bg-emerald-50 dark:bg-emerald-900 border-emerald-200 dark:border-emerald-800' 
+                    : 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-800'
                 }`}>
                   <div className="flex items-center space-x-3">
                     {scanResult.success ? (

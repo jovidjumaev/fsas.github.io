@@ -174,6 +174,39 @@ function ProfessorDashboardContent() {
       console.log('Attempting to save profile data:', profileData);
       console.log('User ID:', user.id);
       
+      // Check if names changed and handle name change tracking
+      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
+      
+      if (namesChanged) {
+        console.log('Names changed, checking name change limits...');
+        
+        // Import and use the name change service
+        const { NameChangeService } = await import('@/lib/name-change-service');
+        
+        // Check if user can change their name
+        const nameChangeInfo = await NameChangeService.getNameChangeInfo(user.id);
+        
+        if (!nameChangeInfo.canChange) {
+          throw new Error('Name change limit reached for this month. Please try again next month.');
+        }
+        
+        // Record the name change
+        const nameChangeResult = await NameChangeService.changeName(
+          user.id,
+          userProfile?.first_name || '',
+          userProfile?.last_name || '',
+          profileData.first_name,
+          profileData.last_name,
+          profileData.nameChangeReason || 'Name change via profile edit'
+        );
+        
+        if (!nameChangeResult.success) {
+          throw new Error(nameChangeResult.message);
+        }
+        
+        console.log('Name change recorded successfully:', nameChangeResult);
+      }
+      
       // Separate data for users table (only basic fields that exist)
       const usersTableData = {
         first_name: profileData.first_name,
@@ -203,8 +236,6 @@ function ProfessorDashboardContent() {
       
       
       // Update auth metadata for additional fields (only if names changed)
-      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
-      
       // DISABLED: Auth update causes redirect to landing page
       // if (namesChanged) {
       //   const { error: authError } = await supabase.auth.updateUser({
@@ -471,7 +502,7 @@ function ProfessorDashboardContent() {
             {/* Navigation */}
             <nav className="hidden lg:flex items-center space-x-1">
               <Link href="/professor/dashboard">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30">
+                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900 hover:bg-blue-100 dark:hover:bg-blue-800">
                   <Home className="w-4 h-4 mr-2" />
                   Dashboard
                 </Button>
@@ -548,7 +579,7 @@ function ProfessorDashboardContent() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-                Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}! 👋
+                Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}{userProfile?.first_name ? `, ${userProfile.first_name}` : ''}! 👋
               </h1>
               <p className="text-xl text-slate-600 dark:text-slate-400">
                 {currentTime.toLocaleDateString('en-US', { 
@@ -592,7 +623,7 @@ function ProfessorDashboardContent() {
                   Active this semester
                 </p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center ml-4">
                 <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
@@ -612,7 +643,7 @@ function ProfessorDashboardContent() {
                   Across all classes
                 </p>
               </div>
-              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-xl flex items-center justify-center ml-4">
                 <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
@@ -637,7 +668,7 @@ function ProfessorDashboardContent() {
                   Sessions running
                 </p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center ml-4">
                 <Activity className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
@@ -663,7 +694,7 @@ function ProfessorDashboardContent() {
                   Last 30 days
                 </p>
               </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center ml-4">
                 <Target className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
@@ -688,7 +719,7 @@ function ProfessorDashboardContent() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-semibold rounded-full">
+                  <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm font-semibold rounded-full">
                     {currentTime.toLocaleDateString('en-US', { weekday: 'short' })}
                   </span>
                 </div>
@@ -719,9 +750,9 @@ function ProfessorDashboardContent() {
                       key={classData.id}
                       className={`p-5 rounded-xl border-2 transition-all duration-200 hover:shadow-lg ${
                         classData.status === 'active' 
-                          ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-200 dark:border-emerald-700' 
+                          ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 border-emerald-200 dark:border-emerald-700' 
                           : classData.status === 'upcoming'
-                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700'
+                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 border-blue-200 dark:border-blue-700'
                           : 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600'
                       }`}
                     >
@@ -813,7 +844,7 @@ function ProfessorDashboardContent() {
               </div>
 
               <div className="space-y-3">
-                <div className="p-3 bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 rounded-xl border border-emerald-200 dark:border-emerald-700">
+                <div className="p-3 bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 rounded-xl border border-emerald-200 dark:border-emerald-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center">
@@ -830,7 +861,7 @@ function ProfessorDashboardContent() {
                   <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">days</p>
                 </div>
 
-                <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-700">
+                <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-xl border border-blue-200 dark:border-blue-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <div className="w-6 h-6 bg-blue-500 rounded-lg flex items-center justify-center">
@@ -846,7 +877,7 @@ function ProfessorDashboardContent() {
                   </div>
                 </div>
 
-                <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 rounded-xl border border-amber-200 dark:border-amber-700">
+                <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-900 dark:to-amber-800 rounded-xl border border-amber-200 dark:border-amber-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
@@ -877,7 +908,7 @@ function ProfessorDashboardContent() {
                   </div>
                 </div>
                 <Link href="/professor/sessions">
-                  <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                  <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900">
                     View All
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
@@ -896,10 +927,10 @@ function ProfessorDashboardContent() {
                       </h4>
                       <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                         session.attendance_rate >= 90
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400'
                           : session.attendance_rate >= 80
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-400'
                       }`}>
                         {session.attendance_rate}%
                       </span>
@@ -939,13 +970,13 @@ function ProfessorDashboardContent() {
                   </Button>
                 </Link>
                 <Link href="/professor/classes">
-                  <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-slate-300 dark:border-slate-600 rounded-lg">
+                  <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900 border-slate-300 dark:border-slate-600 rounded-lg">
                     <Plus className="w-4 h-4 mr-3" />
                     Create New Class
                   </Button>
                 </Link>
                 <Link href="/professor/analytics">
-                  <Button variant="outline" className="w-full justify-start hover:bg-purple-50 dark:hover:bg-purple-900/20 border-slate-300 dark:border-slate-600 rounded-lg">
+                  <Button variant="outline" className="w-full justify-start hover:bg-purple-50 dark:hover:bg-purple-900 border-slate-300 dark:border-slate-600 rounded-lg">
                     <BarChart3 className="w-4 h-4 mr-3" />
                     View Analytics
                   </Button>

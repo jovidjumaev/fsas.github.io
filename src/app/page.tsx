@@ -49,89 +49,71 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    if (!loading) {
-      if (user && userRole) {
-        if (userRole === 'student') {
-          router.push('/student/dashboard');
-        } else if (userRole === 'professor') {
-          router.push('/professor/dashboard');
-        }
+    if (!loading && user && userRole) {
+      if (userRole === 'student') {
+        router.push('/student/dashboard');
+      } else if (userRole === 'professor') {
+        router.push('/professor/dashboard');
       }
-      // If no user or no role, stay on landing page
     }
   }, [user, userRole, loading, router]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center relative overflow-hidden transition-colors duration-300">
-        <div className="fixed inset-0 pointer-events-none">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `
-              linear-gradient(to right, rgb(59 130 246 / 0.04) 1px, transparent 1px),
-              linear-gradient(to bottom, rgb(59 130 246 / 0.04) 1px, transparent 1px)
-            `,
-            backgroundSize: '60px 60px',
-            animation: 'gridMove 20s linear infinite'
-          }}></div>
-        </div>
-        <div className="text-center relative z-10">
+        <div className="text-center relative z-10 animated-bg-content">
           <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-300 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 mx-auto mb-4"></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Loading...</p>
         </div>
-        <style jsx global>{`
-          @keyframes gridMove {
-            0% { transform: translate(0, 0); }
-            100% { transform: translate(60px, 60px); }
-          }
-        `}</style>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-colors duration-300">
-      {/* Subtle Grid Pattern */}
+      {/* Subtle Grid Pattern - Visible in both light and dark mode */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0" style={{
           backgroundImage: `
             linear-gradient(to right, rgb(59 130 246 / 0.04) 1px, transparent 1px),
             linear-gradient(to bottom, rgb(59 130 246 / 0.04) 1px, transparent 1px)
           `,
-          backgroundSize: '60px 60px'
+          backgroundSize: '60px 60px',
+          animation: 'gridMove 20s linear infinite'
         }}></div>
       </div>
 
-      {/* Floating Glowing Orbs - Slow Movement */}
+      {/* Floating Glowing Orbs - Visible in both light and dark mode */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 -left-40 w-96 h-96 bg-blue-500/8 rounded-full blur-3xl animate-float-orb-slow"></div>
-        <div className="absolute -top-40 right-0 w-96 h-96 bg-cyan-500/8 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '5s' }}></div>
-        <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-blue-600/8 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '10s' }}></div>
+        <div className="absolute top-0 -left-40 w-96 h-96 bg-blue-500/8 dark:bg-blue-400/12 rounded-full blur-3xl animate-float-orb-slow"></div>
+        <div className="absolute -top-40 right-0 w-96 h-96 bg-cyan-500/8 dark:bg-cyan-400/12 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '5s' }}></div>
+        <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-blue-600/8 dark:bg-blue-400/12 rounded-full blur-3xl animate-float-orb-slow" style={{ animationDelay: '10s' }}></div>
       </div>
 
-      {/* Gentle QR Pattern */}
+      {/* Gentle QR Pattern - Visible in both light and dark mode */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 left-20 grid grid-cols-3 gap-1 opacity-0 animate-qr-gentle" style={{ animationDelay: '0s' }}>
           {[...Array(9)].map((_, i) => (
-            <div key={i} className={`w-3 h-3 ${[0,2,4,6,8].includes(i) ? 'bg-blue-600/15' : 'bg-transparent'}`}></div>
+            <div key={i} className={`w-3 h-3 ${[0,2,4,6,8].includes(i) ? 'bg-blue-600/15 dark:bg-blue-400/20' : 'bg-transparent'}`}></div>
           ))}
         </div>
       </div>
 
-      {/* Slow Scanning Beam */}
+      {/* Slow Scanning Beam - Visible in both light and dark mode */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute w-full h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent animate-scan-slow"></div>
+        <div className="absolute w-full h-px bg-gradient-to-r from-transparent via-blue-500/30 dark:via-blue-400/40 to-transparent animate-scan-slow"></div>
       </div>
 
-      {/* Falling Geometric Figures */}
+      {/* Falling Geometric Figures - Visible in both light and dark mode */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         {/* Left side - Square */}
-        <div className="absolute left-[15%] w-12 h-12 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg animate-fall-slow shadow-lg shadow-blue-500/20"></div>
+        <div className="absolute left-[15%] w-12 h-12 border-2 border-blue-500/40 dark:border-blue-400/50 bg-blue-500/5 dark:bg-blue-400/10 rounded-lg animate-fall-slow shadow-lg shadow-blue-500/20 dark:shadow-blue-400/30"></div>
         {/* Right side - Circle */}
-        <div className="absolute right-[15%] w-12 h-12 border-2 border-blue-400/40 bg-blue-400/5 rounded-full animate-fall-slow shadow-lg shadow-blue-400/20" style={{ animationDelay: '7.5s' }}></div>
+        <div className="absolute right-[15%] w-12 h-12 border-2 border-blue-400/40 dark:border-blue-300/50 bg-blue-400/5 dark:bg-blue-300/10 rounded-full animate-fall-slow shadow-lg shadow-blue-400/20 dark:shadow-blue-300/30" style={{ animationDelay: '7.5s' }}></div>
       </div>
 
       {/* Content */}
-      <div className="relative">
+      <div className="relative z-10">
         {/* Header */}
         <header className="border-b border-gray-200/80 dark:border-gray-700/80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-sm dark:shadow-gray-800/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -309,10 +291,8 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section className="py-24 px-4 sm:px-6 lg:px-8 relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-50/30 dark:from-blue-950/15 to-transparent"></div>
-          
-          <div className="max-w-7xl mx-auto relative">
+        <section className="py-24 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
             <div className="text-center mb-16">
               <div className="inline-flex items-center space-x-2 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900 px-4 py-2 rounded-full mb-6 shadow-sm">
                 <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -397,11 +377,8 @@ export default function LandingPage() {
         </section>
 
         {/* How It Works */}
-        <section className="py-24 px-4 sm:px-6 lg:px-8 relative">
-          {/* Background gradient - more transparent to show animations */}
-          <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-blue-50/20 to-white/80 dark:from-gray-900/80 dark:via-gray-800/30 dark:to-gray-900/80"></div>
-          
-          <div className="max-w-6xl mx-auto relative">
+        <section className="py-24 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16">
               <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-full mb-6">
                 <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -517,6 +494,11 @@ export default function LandingPage() {
       </div>
 
       <style jsx global>{`
+        @keyframes gridMove {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(60px, 60px); }
+        }
+        
         @keyframes float-orb-slow {
           0%, 100% {
             transform: translate(0, 0);

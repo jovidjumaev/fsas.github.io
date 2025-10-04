@@ -364,7 +364,7 @@ function ClassesPageContent() {
                 </Button>
               </Link>
               <Link href="/professor/classes">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30">
+                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900 hover:bg-blue-100 dark:hover:bg-blue-800">
                   <BookOpen className="w-4 h-4 mr-2" />
                   Classes
                 </Button>
@@ -553,13 +553,13 @@ function ClassesPageContent() {
                         <div className="flex items-center space-x-2 mt-1">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                             classData.is_active
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400'
                               : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
                           }`}>
                             {classData.is_active ? 'Active' : 'Inactive'}
                           </span>
                           {classData.active_sessions && classData.active_sessions > 0 && (
-                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 animate-pulse">
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 animate-pulse">
                               Live Session
                             </span>
                           )}
@@ -658,7 +658,7 @@ function ClassesPageContent() {
 
                   {/* Next Session Alert */}
                   {classData.next_session && (
-                    <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-700">
+                    <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-xl border border-blue-200 dark:border-blue-700">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
@@ -681,19 +681,19 @@ function ClassesPageContent() {
                   {/* Action Buttons */}
                   <div className="grid grid-cols-3 gap-2">
                     <Link href={`/professor/classes/${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                      <Button variant="outline" size="sm" className="w-full hover:bg-blue-50 dark:hover:bg-blue-900 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
                         <Settings className="w-4 h-4 mr-1" />
                         Manage
                       </Button>
                     </Link>
                     <Link href={`/professor/sessions?classId=${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all">
+                      <Button variant="outline" size="sm" className="w-full hover:bg-emerald-50 dark:hover:bg-emerald-900 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all">
                         <Calendar className="w-4 h-4 mr-1" />
                         Sessions
                       </Button>
                     </Link>
                     <Link href={`/professor/analytics?classId=${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-700 transition-all">
+                      <Button variant="outline" size="sm" className="w-full hover:bg-purple-50 dark:hover:bg-purple-900 hover:border-purple-300 dark:hover:border-purple-700 transition-all">
                         <BarChart3 className="w-4 h-4 mr-1" />
                         Analytics
                       </Button>
