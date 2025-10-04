@@ -175,126 +175,120 @@ export default function StudentRegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400 dark:bg-blue-600 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-20 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400 dark:bg-purple-600 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-400 dark:bg-indigo-600 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+      </div>
 
-      {/* Header */}
-      <header className="border-b border-gray-200/80 dark:border-gray-700/80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl fixed top-0 left-0 right-0 z-50 shadow-sm dark:shadow-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center space-x-3 group cursor-pointer">
+      {/* Dark Mode Toggle */}
+      <button
+        onClick={toggleDarkMode}
+        className="absolute top-6 right-6 p-3 rounded-xl bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all duration-300 z-10"
+      >
+        {isDarkMode ? (
+          <Sun className="w-5 h-5 text-yellow-500" />
+        ) : (
+          <Moon className="w-5 h-5 text-gray-700" />
+        )}
+      </button>
+
+      <div className="max-w-md w-full space-y-8 relative z-10">
+        {/* Header */}
+        <div className="text-center">
+          <Link href="/" className="inline-block group">
+            <div className="flex items-center justify-center space-x-3 mb-2">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl blur-md opacity-50 group-hover:opacity-75 transition-opacity"></div>
-                <div className="relative w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                  <Zap className="w-5 h-5 text-white" />
-                </div>
+                <GraduationCap className="w-10 h-10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
+                <div className="absolute inset-0 bg-blue-400 dark:bg-blue-600 blur-xl opacity-50"></div>
               </div>
-              <div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent group-hover:from-blue-700 group-hover:to-cyan-700 transition-all">
-                  FSAS
-                </h1>
-                <p className="text-xs text-gray-600 dark:text-gray-400">Furman Smart Attendance System</p>
-              </div>
-            </Link>
-            <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              aria-label="Toggle dark mode"
-            >
-              {isDarkMode ? (
-                <Sun className="w-5 h-5 text-yellow-500" />
-              ) : (
-                <Moon className="w-5 h-5 text-gray-700" />
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="flex items-center justify-center min-h-screen pt-16 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8 relative z-10">
-          {/* Page Header */}
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-2xl shadow-xl mb-6 relative group">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-2xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity"></div>
-              <GraduationCap className="w-10 h-10 text-white relative z-10" />
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
+                FSAS
+              </h1>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-2">
-              Create Student Account
+            <p className="text-sm text-gray-600 dark:text-gray-400">Furman Smart Attendance System</p>
+          </Link>
+          
+          <div className="mt-8">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Student Registration
             </h2>
-            <p className="text-gray-600 dark:text-gray-300">
-              Join the FSAS platform and start tracking attendance
+            <p className="mt-3 text-base text-gray-600 dark:text-gray-400">
+              Create your student account
             </p>
           </div>
+        </div>
 
-          {/* Registration Form Card */}
-          <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-3xl opacity-0 group-hover:opacity-20 blur-xl transition-all duration-500"></div>
-            <Card className="relative bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-3xl p-8 shadow-xl">
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {error && (
-                  <>
-                    <ErrorDisplay
-                      error={error}
-                      title="Registration Failed"
-                      onRetry={() => setError('')}
-                      showDetails={true}
+        {/* Registration Form Card */}
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-3xl opacity-0 group-hover:opacity-20 blur-xl transition-all duration-500"></div>
+          <Card className="relative bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-3xl p-8 shadow-xl">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <>
+                  <ErrorDisplay
+                    error={error}
+                    title="Registration Failed"
+                    onRetry={() => setError('')}
+                    showDetails={true}
+                  />
+                  {error.includes('already registered') && (
+                    <div className="flex items-center justify-center">
+                      <Link 
+                        href="/student/login"
+                        className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors shadow-lg"
+                      >
+                        <span>Go to Sign In Page</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Personal Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="firstName" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    First Name *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      required
+                      value={formData.firstName}
+                      onChange={handleInputChange('firstName')}
+                      className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:text-white"
+                      placeholder="John"
                     />
-                    {error.includes('already registered') && (
-                      <div className="flex items-center justify-center">
-                        <Link 
-                          href="/student/login"
-                          className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors shadow-lg"
-                        >
-                          <span>Go to Sign In Page</span>
-                          <ArrowRight className="w-5 h-5" />
-                        </Link>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Personal Information */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="firstName" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      First Name *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <User className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                      </div>
-                      <Input
-                        id="firstName"
-                        type="text"
-                        required
-                        value={formData.firstName}
-                        onChange={handleInputChange('firstName')}
-                        className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:text-white"
-                        placeholder="John"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="lastName" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Last Name *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <User className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                      </div>
-                      <Input
-                        id="lastName"
-                        type="text"
-                        required
-                        value={formData.lastName}
-                        onChange={handleInputChange('lastName')}
-                        className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:text-white"
-                        placeholder="Doe"
-                      />
-                    </div>
                   </div>
                 </div>
+                <div>
+                  <label htmlFor="lastName" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Last Name *
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      required
+                      value={formData.lastName}
+                      onChange={handleInputChange('lastName')}
+                      className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:text-white"
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
+              </div>
 
                 <div>
                   <label htmlFor="email" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -461,20 +455,18 @@ export default function StudentRegisterPage() {
                     </Button>
                   </Link>
                 </div>
-              </div>
-            </Card>
-          </div>
+            </div>
+          </Card>
+        </div>
 
-          {/* Back to Home */}
-          <div className="text-center">
-            <Link href="/" className="inline-flex items-center space-x-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
-              <ArrowRight className="w-4 h-4 rotate-180" />
-              <span>Back to Home</span>
-            </Link>
-          </div>
+        {/* Back to Home */}
+        <div className="text-center">
+          <Link href="/" className="inline-flex items-center space-x-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
+            <ArrowRight className="w-4 h-4 rotate-180" />
+            <span>Back to Home</span>
+          </Link>
         </div>
       </div>
-
     </div>
   );
 }

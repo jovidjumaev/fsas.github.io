@@ -14,7 +14,8 @@ import {
   MapPin,
   Calendar,
   Shield,
-  Edit3
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -34,6 +35,7 @@ interface ProfileDropdownProps {
   onEditProfile: () => void;
   onChangePassword: () => void;
   onUploadAvatar: (file: File) => void;
+  onDeleteAvatar: () => void;
 }
 
 export default function ProfileDropdown({
@@ -42,7 +44,8 @@ export default function ProfileDropdown({
   onSignOut,
   onEditProfile,
   onChangePassword,
-  onUploadAvatar
+  onUploadAvatar,
+  onDeleteAvatar
 }: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -85,6 +88,23 @@ export default function ProfileDropdown({
       alert('Failed to upload avatar. Please try again.');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    if (!userProfile?.avatar_url) {
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete your profile picture? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await onDeleteAvatar();
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      alert('Failed to delete avatar. Please try again.');
     }
   };
 
@@ -168,18 +188,36 @@ export default function ProfileDropdown({
                        getInitials(user.user_metadata.first_name, user.user_metadata.last_name) : 'U'}
                     </div>
                   )}
-                  {/* Upload Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs transition-colors disabled:opacity-50"
-                  >
-                    {isUploading ? (
-                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <Camera className="w-3 h-3" />
+                  
+                  {/* Action Buttons */}
+                  <div className="absolute -bottom-1 -right-1 flex space-x-1">
+                    {/* Upload Button */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs transition-colors disabled:opacity-50"
+                      title="Upload new photo"
+                    >
+                      {isUploading ? (
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Camera className="w-3 h-3" />
+                      )}
+                    </button>
+                    
+                    {/* Delete Button - only show if avatar exists */}
+                    {userProfile?.avatar_url && (
+                      <button
+                        onClick={handleDeleteAvatar}
+                        disabled={isUploading}
+                        className="w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white text-xs transition-colors disabled:opacity-50"
+                        title="Delete photo"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     )}
-                  </button>
+                  </div>
+                  
                   <input
                     ref={fileInputRef}
                     type="file"

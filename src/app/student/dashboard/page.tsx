@@ -298,41 +298,139 @@ function StudentDashboardContent() {
   };
 
   const handleAvatarUpload = async (file: File) => {
-    if (!user) return;
+    if (!user) {
+      console.error('No user found for avatar upload');
+      throw new Error('User not authenticated');
+    }
     
     try {
+      console.log('Starting avatar upload for user:', user.id);
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.');
+      }
+      
+      // Validate file size (5MB limit)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new Error('File size too large. Please upload an image smaller than 5MB.');
+      }
+      
       // Create a unique filename
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileName = `${user.id}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
       
+      console.log('Uploading file to path:', filePath);
+      
       // Upload file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
         });
       
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      }
+      
+      console.log('File uploaded successfully:', uploadData);
       
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
       
-      // Update user profile with avatar URL
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ avatar_url: publicUrl } as any)
-        .eq('id', user.id);
+      console.log('Public URL generated:', publicUrl);
       
-      if (updateError) throw updateError;
+      // Update user profile with avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
       
       // Update local state
       setUserProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+      
+      console.log('Avatar upload completed successfully');
     } catch (error) {
       console.error('Error uploading avatar:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!user) {
+      console.error('No user found for avatar deletion');
+      throw new Error('User not authenticated');
+    }
+    
+    try {
+      console.log('Starting avatar deletion for user:', user.id);
+      
+      // Get current avatar URL to extract file path
+      const currentAvatarUrl = userProfile?.avatar_url;
+      if (!currentAvatarUrl) {
+        throw new Error('No avatar to delete');
+      }
+      
+      // Extract file path from URL
+      const urlParts = currentAvatarUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1];
+      const filePath = `avatars/${fileName}`;
+      
+      console.log('Deleting file from path:', filePath);
+      
+      // Delete file from Supabase Storage
+      const { error: deleteError } = await supabase.storage
+        .from('avatars')
+        .remove([filePath]);
+      
+      if (deleteError) {
+        console.error('Storage deletion error:', deleteError);
+        throw new Error(`Failed to delete file: ${deleteError.message}`);
+      }
+      
+      console.log('File deleted successfully from storage');
+      
+      // Update user profile to remove avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: null }));
+      
+      console.log('Avatar deletion completed successfully');
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
       throw error;
     }
   };
@@ -522,6 +620,7 @@ function StudentDashboardContent() {
                 onEditProfile={() => setShowProfileEdit(true)}
                 onChangePassword={() => setShowPasswordChange(true)}
                 onUploadAvatar={handleAvatarUpload}
+                onDeleteAvatar={handleAvatarDelete}
               />
             </div>
           </div>

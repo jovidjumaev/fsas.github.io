@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth-context';
-import { BookOpen, Mail, Lock, User, Hash, Building2, Phone, ArrowRight, AlertCircle, Moon, Sun } from 'lucide-react';
+import { BookOpen, Mail, Lock, User, Hash, Building2, Phone, ArrowRight, AlertCircle, Zap, Moon, Sun, Eye, EyeOff } from 'lucide-react';
 import { PasswordInputWithStrength } from '@/components/ui/password-strength-indicator';
 import { ErrorDisplay } from '@/components/ui/error-display';
 
@@ -50,32 +50,70 @@ export default function ProfessorRegisterPage() {
     }
   };
 
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!loading && user && userRole) {
+      if (userRole === 'student') {
+        router.push('/student/dashboard');
+      } else if (userRole === 'professor') {
+        router.push('/professor/dashboard');
+      }
+    }
+  }, [user, userRole, loading, router]);
+
   const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [field]: e.target.value });
+    const value = e?.target?.value || '';
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const handlePasswordChange = (value: string) => {
-    setFormData({ ...formData, password: value });
+    setFormData(prev => ({
+      ...prev,
+      password: value
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setIsLoading(true);
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match.');
-      setIsLoading(false);
-      return;
-    }
-
-    if (!isPasswordValid) {
-      setError('Password does not meet the strength requirements.');
-      setIsLoading(false);
-      return;
-    }
+    setError('');
 
     try {
+      // Validate passwords match
+      if (formData.password !== formData.confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+
+      // Validate password length
+      if (formData.password.length < 12) {
+        setError('Password must be at least 12 characters long for security');
+        return;
+      }
+
+      // Email validation (domain and uniqueness) will be handled by auth context
+
+      // Validate required fields
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.employeeId) {
+        setError('Please fill in all required fields');
+        return;
+      }
+
+      // Client-side employee ID validation
+      const employeeIdRegex = /^\d{7}$/;
+      if (!employeeIdRegex.test(formData.employeeId.trim())) {
+        setError('Employee ID must be exactly 7 digits.\n\n💡 Example: 1234567\n\nPlease enter your official employee ID number.');
+        return;
+      }
+
+      console.log('👨‍🏫 Professor registration attempt:', { 
+        email: formData.email, 
+        employeeId: formData.employeeId 
+      });
+
       const result = await signUp(
         formData.email,
         formData.password,
@@ -84,14 +122,15 @@ export default function ProfessorRegisterPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           employeeId: formData.employeeId,
-          title: formData.title,
-          officeLocation: formData.officeLocation,
-          phone: formData.phone
+          title: formData.title || 'Professor',
+          officeLocation: formData.officeLocation || 'TBD',
+          phone: formData.phone || 'TBD'
         }
       );
 
       if (result.success) {
-        router.push('/professor/login?message=registration_success');
+        console.log('✅ Professor registration successful');
+        router.push('/professor/dashboard');
       } else {
         console.error('❌ Professor registration failed:', result.error);
         setError(result.error || 'Registration failed. Please try again.');
@@ -130,7 +169,7 @@ export default function ProfessorRegisterPage() {
   // Show loading while checking authentication
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-cyan-900 dark:to-teal-900 flex items-center justify-center transition-colors duration-300">
+      <div className="min-h-screen bg-gradient-to-br from-slate-200 via-gray-200 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center transition-colors duration-300">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-2 border-cyan-200 dark:border-cyan-800 border-t-cyan-600 dark:border-t-cyan-400 mx-auto mb-4"></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Loading...</p>
@@ -446,12 +485,13 @@ export default function ProfessorRegisterPage() {
           </Card>
         </div>
 
-        {/* Back to Home */}
-        <div className="text-center">
-          <Link href="/" className="inline-flex items-center space-x-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">
-            <ArrowRight className="w-4 h-4 rotate-180" />
-            <span>Back to Home</span>
-          </Link>
+          {/* Back to Home */}
+          <div className="text-center">
+            <Link href="/" className="inline-flex items-center space-x-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              <span>Back to Home</span>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

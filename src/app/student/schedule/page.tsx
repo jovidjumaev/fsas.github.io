@@ -231,6 +231,39 @@ function StudentScheduleContent() {
     }
   };
 
+  const handleDeleteAvatar = async () => {
+    if (!user) return;
+    
+    try {
+      // Remove avatar from storage if it exists
+      if (userProfile?.avatar_url) {
+        const fileName = userProfile.avatar_url.split('/').pop();
+        if (fileName) {
+          const { error: deleteError } = await supabase.storage
+            .from('avatars')
+            .remove([`avatars/${fileName}`]);
+          
+          if (deleteError) {
+            console.warn('Error deleting avatar from storage:', deleteError);
+          }
+        }
+      }
+      
+      // Update user profile to remove avatar_url
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ avatar_url: null } as any)
+        .eq('id', user.id);
+      
+      if (updateError) throw updateError;
+      
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: null }));
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     fetchUserProfile();
     
@@ -575,6 +608,7 @@ function StudentScheduleContent() {
                 onEditProfile={() => setShowProfileEdit(true)}
                 onChangePassword={() => setShowPasswordChange(true)}
                 onUploadAvatar={handleAvatarUpload}
+                onDeleteAvatar={handleDeleteAvatar}
               />
             </div>
           </div>

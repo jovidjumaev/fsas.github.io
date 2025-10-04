@@ -17,6 +17,7 @@ export interface Database {
           last_name: string
           role: 'student' | 'professor' | 'admin'
           is_active: boolean
+          avatar_url: string | null
           created_at: string
           updated_at: string
         }
@@ -27,6 +28,7 @@ export interface Database {
           last_name: string
           role: 'student' | 'professor' | 'admin'
           is_active?: boolean
+          avatar_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -37,6 +39,7 @@ export interface Database {
           last_name?: string
           role?: 'student' | 'professor' | 'admin'
           is_active?: boolean
+          avatar_url?: string | null
           created_at?: string
           updated_at?: string
         }
