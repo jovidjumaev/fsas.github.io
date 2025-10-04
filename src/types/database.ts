@@ -9,35 +9,109 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      user_profiles: {
+      users: {
         Row: {
           id: string
-          student_id: string
+          email: string
           first_name: string
           last_name: string
-          email: string
           role: 'student' | 'professor' | 'admin'
+          is_active: boolean
           created_at: string
+          updated_at: string
         }
         Insert: {
           id: string
-          student_id: string
+          email: string
           first_name: string
           last_name: string
-          email: string
-          role?: 'student' | 'professor' | 'admin'
+          role: 'student' | 'professor' | 'admin'
+          is_active?: boolean
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
-          student_id?: string
+          email?: string
           first_name?: string
           last_name?: string
-          email?: string
           role?: 'student' | 'professor' | 'admin'
+          is_active?: boolean
           created_at?: string
+          updated_at?: string
         }
         Relationships: []
+      }
+      students: {
+        Row: {
+          user_id: string
+          student_id: string
+          enrollment_year: number
+          major: string | null
+          gpa: number | null
+          graduation_date: string | null
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          student_id: string
+          enrollment_year: number
+          major?: string | null
+          gpa?: number | null
+          graduation_date?: string | null
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          student_id?: string
+          enrollment_year?: number
+          major?: string | null
+          gpa?: number | null
+          graduation_date?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      professors: {
+        Row: {
+          user_id: string
+          employee_id: string
+          title: string | null
+          office_location: string | null
+          phone: string | null
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          employee_id: string
+          title?: string | null
+          office_location?: string | null
+          phone?: string | null
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          employee_id?: string
+          title?: string | null
+          office_location?: string | null
+          phone?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professors_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       courses: {
         Row: {
@@ -201,6 +275,79 @@ export interface Database {
             foreignKeyName: "qr_code_usage_used_by_fkey"
             columns: ["used_by"]
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          type: 'attendance_reminder' | 'attendance_marked' | 'class_cancelled' | 'class_rescheduled' | 'grade_posted' | 'assignment_due' | 'announcement' | 'system'
+          priority: 'low' | 'medium' | 'high' | 'urgent'
+          title: string
+          message: string
+          link: string | null
+          is_read: boolean
+          read_at: string | null
+          class_id: string | null
+          session_id: string | null
+          metadata: Json | null
+          expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: 'attendance_reminder' | 'attendance_marked' | 'class_cancelled' | 'class_rescheduled' | 'grade_posted' | 'assignment_due' | 'announcement' | 'system'
+          priority?: 'low' | 'medium' | 'high' | 'urgent'
+          title: string
+          message: string
+          link?: string | null
+          is_read?: boolean
+          read_at?: string | null
+          class_id?: string | null
+          session_id?: string | null
+          metadata?: Json | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: 'attendance_reminder' | 'attendance_marked' | 'class_cancelled' | 'class_rescheduled' | 'grade_posted' | 'assignment_due' | 'announcement' | 'system'
+          priority?: 'low' | 'medium' | 'high' | 'urgent'
+          title?: string
+          message?: string
+          link?: string | null
+          is_read?: boolean
+          read_at?: string | null
+          class_id?: string | null
+          session_id?: string | null
+          metadata?: Json | null
+          expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_class_id_fkey"
+            columns: ["class_id"]
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_session_id_fkey"
+            columns: ["session_id"]
+            referencedRelation: "sessions"
             referencedColumns: ["id"]
           }
         ]

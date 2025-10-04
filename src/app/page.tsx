@@ -49,12 +49,15 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    if (!loading && user && userRole) {
-      if (userRole === 'student') {
-        router.push('/student/dashboard');
-      } else if (userRole === 'professor') {
-        router.push('/professor/dashboard');
+    if (!loading) {
+      if (user && userRole) {
+        if (userRole === 'student') {
+          router.push('/student/dashboard');
+        } else if (userRole === 'professor') {
+          router.push('/professor/dashboard');
+        }
       }
+      // If no user or no role, stay on landing page
     }
   }, [user, userRole, loading, router]);
 

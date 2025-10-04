@@ -249,9 +249,7 @@ export default function ProfessorForgotPassword() {
                 </div>
                 <Input
                   id="email"
-                  name="email"
                   type="email"
-                  autoComplete="email"
                   required
                   value={email}
                   onChange={handleInputChange}

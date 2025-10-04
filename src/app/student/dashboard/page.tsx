@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
+import { NotificationPanel } from '@/components/notifications/notification-panel';
+import ProfileDropdown from '@/components/profile/profile-dropdown';
+import ProfileEditModal from '@/components/profile/profile-edit-modal';
+import PasswordChangeModal from '@/components/profile/password-change-modal';
+import { supabase } from '@/lib/supabase';
 import { 
   GraduationCap,
   QrCode, 
@@ -73,10 +78,9 @@ function StudentDashboardContent() {
   const [recentAttendance, setRecentAttendance] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
-  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
   const { user, signOut } = useAuth();
   const router = useRouter();
 
@@ -108,7 +112,195 @@ function StudentDashboardContent() {
     }
   };
 
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('🔍 Fetching user profile for user ID:', user.id);
+      console.log('🔍 User metadata:', user.user_metadata);
+      
+      const { data, error } = await supabase
+        .from('users' as any)
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        console.log('🔍 Falling back to user metadata');
+        
+        // Create a basic profile from user metadata
+        const fallbackProfile = {
+          first_name: user.user_metadata?.first_name || 'Student',
+          last_name: user.user_metadata?.last_name || '',
+          email: user.email || '',
+          role: user.user_metadata?.role || 'student',
+          phone: user.user_metadata?.phone || '',
+          office_location: user.user_metadata?.office_location || '',
+          title: user.user_metadata?.title || ''
+        };
+        
+        console.log('🔍 Using fallback profile:', fallbackProfile);
+        setUserProfile(fallbackProfile);
+        return;
+      }
+      
+      // Combine database data with auth metadata for complete profile
+      const completeProfile = {
+        ...(data as any || {}),
+        phone: user.user_metadata?.phone || '',
+        office_location: user.user_metadata?.office_location || '',
+        title: user.user_metadata?.title || ''
+      };
+      
+      console.log('✅ User profile fetched:', completeProfile);
+      setUserProfile(completeProfile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const handleProfileSave = async (profileData: any) => {
+    if (!user) return;
+    
+    try {
+      // Separate data for users table (only basic fields that exist)
+      const usersTableData = {
+        first_name: profileData.first_name,
+        last_name: profileData.last_name,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Additional data for auth metadata (fields not in users table)
+      const authMetadataData = {
+        first_name: profileData.first_name,
+        last_name: profileData.last_name,
+        phone: profileData.phone,
+        office_location: profileData.office_location,
+        title: profileData.title
+      };
+      
+      // Update the users table with only existing columns
+      const { error: usersError } = await supabase
+        .from('users' as any)
+        .update(usersTableData)
+        .eq('id', user.id);
+      
+      if (usersError) {
+        console.error('Error updating users table:', usersError);
+        throw new Error(`Failed to save profile: ${usersError.message}`);
+      }
+      
+      // Update auth metadata for additional fields (only if names changed)
+      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
+      
+      // DISABLED: Auth update causes redirect to landing page
+      // if (namesChanged) {
+      //   const { error: authError } = await supabase.auth.updateUser({
+      //     data: authMetadataData
+      //   });
+      //   
+      //   if (authError) {
+      //     console.warn('Warning: Could not update auth metadata:', authError.message);
+      //     // Don't throw error here, as the main update succeeded
+      //   }
+      // }
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, ...profileData }));
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      throw error;
+    }
+  };
+
+  const handlePasswordChange = async (currentPassword: string, newPassword: string) => {
+    try {
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Get user profile information for validation
+      const { data: profileData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+
+      const { data: studentData } = await supabase
+        .from('students')
+        .select('student_id')
+        .eq('user_id', user.id)
+        .single();
+
+      // Import and use the password change service
+      const { PasswordChangeService } = await import('@/lib/password-change-service');
+      
+      const result = await PasswordChangeService.changePassword(
+        user.id,
+        user.email || '',
+        currentPassword,
+        newPassword,
+        {
+          firstName: profileData?.first_name || user.user_metadata?.first_name,
+          lastName: profileData?.last_name || user.user_metadata?.last_name,
+          studentNumber: studentData?.student_id
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Password change failed');
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!user) return;
+    
+    try {
+      // Create a unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+      
+      // Upload file to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+      
+      if (uploadError) throw uploadError;
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      
+      // Update user profile with avatar URL
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl } as any)
+        .eq('id', user.id);
+      
+      if (updateError) throw updateError;
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
+    // Fetch user profile
+    fetchUserProfile();
+    
     // TODO: Replace with actual Supabase calls
     const mockStudentData: StudentData = {
       student_id: user?.id || '123e4567-e89b-12d3-a456-426614174000',
@@ -147,485 +339,384 @@ function StudentDashboardContent() {
         id: '3',
         class_code: 'MAT-201',
         class_name: 'Calculus II',
-        time: '3:30 PM - 4:20 PM',
-        room: 'Room 310',
+        time: '4:00 PM - 4:50 PM',
+        room: 'Room 301',
         professor: 'Dr. Emily Davis',
         status: 'upcoming'
       }
     ];
 
     const mockRecentAttendance: AttendanceRecord[] = [
-      { date: 'Today', status: 'present', class_name: 'CSC-475' },
-      { date: 'Yesterday', status: 'present', class_name: 'CSC-301' },
-      { date: 'Yesterday', status: 'late', class_name: 'MAT-201' },
-      { date: '2 days ago', status: 'present', class_name: 'CSC-475' },
-      { date: '2 days ago', status: 'absent', class_name: 'PHY-101' }
+      { date: '2024-01-15', status: 'present', class_name: 'CSC-475' },
+      { date: '2024-01-15', status: 'present', class_name: 'CSC-301' },
+      { date: '2024-01-15', status: 'late', class_name: 'MAT-201' },
+      { date: '2024-01-14', status: 'present', class_name: 'CSC-475' },
+      { date: '2024-01-14', status: 'present', class_name: 'CSC-301' },
+      { date: '2024-01-14', status: 'absent', class_name: 'MAT-201' }
     ];
 
-    setTimeout(() => {
-      setStudentData(mockStudentData);
-      setTodayClasses(mockTodayClasses);
-      setRecentAttendance(mockRecentAttendance);
-      setIsLoading(false);
-    }, 800);
+    setStudentData(mockStudentData);
+    setTodayClasses(mockTodayClasses);
+    setRecentAttendance(mockRecentAttendance);
+    setIsLoading(false);
   }, [user]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push('/');
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'present': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'absent': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'late': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+      case 'present':
+        return 'text-green-600 bg-green-100 dark:bg-green-900/30';
+      case 'late':
+        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30';
+      case 'absent':
+        return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+      default:
+        return 'text-gray-600 bg-gray-100 dark:bg-gray-900/30';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'present': return <CheckCircle className="w-4 h-4" />;
-      case 'absent': return <XCircle className="w-4 h-4" />;
-      case 'late': return <AlertCircle className="w-4 h-4" />;
-      default: return null;
+      case 'present':
+        return <CheckCircle className="w-4 h-4" />;
+      case 'late':
+        return <Clock className="w-4 h-4" />;
+      case 'absent':
+        return <XCircle className="w-4 h-4" />;
+      default:
+        return <AlertCircle className="w-4 h-4" />;
     }
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-200 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 dark:border-blue-800 border-t-blue-600 dark:border-t-blue-400 mx-auto mb-4"></div>
-          <p className="text-gray-700 dark:text-gray-300 font-medium">Loading your dashboard...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-200 dark:border-emerald-800 border-t-emerald-600 dark:border-t-emerald-400 mx-auto mb-4"></div>
+          <p className="text-slate-700 dark:text-slate-300 font-medium">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
-  const isExpanded = !sidebarCollapsed || sidebarHovered;
-
   return (
-    <div className="min-h-screen bg-slate-200 dark:bg-gray-900 transition-colors duration-300">
-      {/* Sidebar */}
-      <aside 
-        className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-gray-800 shadow-xl transform transition-all duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 ${
-          isExpanded ? 'w-64' : 'w-20'
-        }`}
-        onMouseEnter={() => sidebarCollapsed && setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
-      >
-        <div className="h-full flex flex-col">
-          {/* Logo */}
-          <div className={`p-6 border-b border-gray-200 dark:border-gray-700 flex items-center ${isExpanded ? 'justify-between' : 'justify-center'}`}>
-            <Link href="/" className={`flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'}`}>
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                <GraduationCap className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+      {/* Top Navigation - Clean & Minimal */}
+      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link href="/student/dashboard" className="flex items-center space-x-3 group">
+              <div className="w-8 h-8 bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
+                <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              {isExpanded && (
-                <div className="overflow-hidden">
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">FSAS</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Student Portal</p>
-                </div>
-              )}
+              <div>
+                <h1 className="text-lg font-bold text-slate-900 dark:text-white">FSAS</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Student Portal</p>
+              </div>
             </Link>
-            {isExpanded && (
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="hidden lg:block p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <ChevronLeft className={`w-5 h-5 text-gray-500 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} />
-              </button>
-            )}
-          </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-medium transition-all group relative`}>
-              <Home className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">Dashboard</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+            {/* Navigation */}
+            <nav className="hidden lg:flex items-center space-x-1">
+              <Link href="/student/dashboard">
+                <Button variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30">
+                  <Home className="w-4 h-4 mr-2" />
                   Dashboard
-                </span>
-              )}
-            </button>
-            
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all group relative`}>
-              <QrCode className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">Scan QR Code</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  Scan QR Code
-                </span>
-              )}
-            </button>
-            
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all group relative`}>
-              <BarChart3 className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">Attendance History</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  Attendance History
-                </span>
-              )}
-            </button>
-            
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all group relative`}>
-              <BookOpen className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">My Classes</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  My Classes
-                </span>
-              )}
-            </button>
-            
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all group relative`}>
-              <Calendar className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">Schedule</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                </Button>
+              </Link>
+              <Link href="/student/scan">
+                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Scan QR
+                </Button>
+              </Link>
+              <Link href="/student/attendance">
+                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Attendance
+                </Button>
+              </Link>
+              <Link href="/student/classes">
+                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Classes
+                </Button>
+              </Link>
+              <Link href="/student/schedule">
+                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <Calendar className="w-4 h-4 mr-2" />
                   Schedule
-                </span>
-              )}
-            </button>
-            
-            <button className={`w-full flex items-center ${isExpanded ? 'space-x-3' : 'justify-center'} px-4 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all group relative`}>
-              <Bell className="w-5 h-5 flex-shrink-0" />
-              {isExpanded && <span className="whitespace-nowrap">Notifications</span>}
-              {!isExpanded && !sidebarHovered && (
-                <span className="absolute left-full ml-6 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                  Notifications
-                </span>
-              )}
-            </button>
-          </nav>
+                </Button>
+              </Link>
+            </nav>
 
+            {/* Right Side Actions */}
+            <div className="flex items-center space-x-4">
+              {/* Notifications */}
+              <NotificationPanel />
+
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5 text-amber-500" />
+                ) : (
+                  <Moon className="w-5 h-5 text-slate-600" />
+                )}
+              </button>
+
+              {/* Profile Dropdown */}
+              <ProfileDropdown
+                user={user}
+                userProfile={userProfile}
+                onSignOut={signOut}
+                onEditProfile={() => setShowProfileEdit(true)}
+                onChangePassword={() => setShowPasswordChange(true)}
+                onUploadAvatar={handleAvatarUpload}
+              />
+            </div>
+          </div>
         </div>
-      </aside>
+      </header>
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${isExpanded ? 'lg:pl-64' : 'lg:pl-20'}`}>
-        {/* Top Header */}
-        <header className="sticky top-0 z-40 bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <button 
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
-                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-                </button>
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
+            Welcome back, {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Student'}! 👋
+          </h1>
+          <p className="text-xl text-slate-600 dark:text-slate-400">
+            {new Date().toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              month: 'long', 
+              day: 'numeric',
+              year: 'numeric'
+            })}
+          </p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  Overall Attendance
+                </p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                  {stats.overallAttendance}%
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  This semester
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center ml-4">
+                <TrendingUp className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  Total Classes
+                </p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                  {stats.totalClasses}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Enrolled this semester
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center ml-4">
+                <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  Classes Today
+                </p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                  {stats.classesToday}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Scheduled sessions
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center ml-4">
+                <Calendar className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  Attendance Streak
+                </p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                  {stats.attendanceStreak}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Days in a row
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center ml-4">
+                <Clock className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Today's Classes */}
+          <div className="lg:col-span-2">
+            <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <Calendar className="w-5 h-5 text-white" />
+                </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Welcome back, {studentData?.first_name}! 👋
-                  </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Today's Classes</h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {todayClasses.length} classes scheduled for today
                   </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4">
-                <button 
-                  onClick={toggleDarkMode}
-                  className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  {isDarkMode ? (
-                    <Sun className="w-5 h-5 text-yellow-500" />
-                  ) : (
-                    <Moon className="w-5 h-5 text-gray-700" />
-                  )}
-                </button>
-                <button className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative">
-                  <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                </button>
-                
-                {/* Profile Dropdown */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                    className="flex items-center space-x-3 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <div className="hidden sm:block text-left">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{studentData?.first_name} {studentData?.last_name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{studentData?.student_number}</p>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${profileDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
 
-                  {/* Dropdown Menu */}
-                  {profileDropdownOpen && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40" 
-                        onClick={() => setProfileDropdownOpen(false)}
-                      ></div>
-                      <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* User Info Header */}
-                        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{studentData?.first_name} {studentData?.last_name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{studentData?.email}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ID: {studentData?.student_number}</p>
-                        </div>
-
-                        {/* Menu Items */}
-                        <div className="py-2">
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <User className="w-4 h-4" />
-                            <span className="text-sm">View Profile</span>
-                          </button>
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <Edit className="w-4 h-4" />
-                            <span className="text-sm">Edit Profile</span>
-                          </button>
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <Lock className="w-4 h-4" />
-                            <span className="text-sm">Change Password</span>
-                          </button>
-                        </div>
-
-                        <div className="border-t border-gray-200 dark:border-gray-700 py-2">
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <Settings className="w-4 h-4" />
-                            <span className="text-sm">Settings</span>
-                          </button>
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <Bell className="w-4 h-4" />
-                            <span className="text-sm">Notifications</span>
-                          </button>
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <Shield className="w-4 h-4" />
-                            <span className="text-sm">Privacy & Security</span>
-                          </button>
-                        </div>
-
-                        <div className="border-t border-gray-200 dark:border-gray-700 py-2">
-                          <button className="w-full flex items-center space-x-3 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <HelpCircle className="w-4 h-4" />
-                            <span className="text-sm">Help & Support</span>
-                          </button>
-                        </div>
-
-                        <div className="border-t border-gray-200 dark:border-gray-700 py-2">
-                          <button 
-                            onClick={handleSignOut}
-                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            <span className="text-sm font-medium">Sign Out</span>
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Dashboard Content */}
-        <main className="p-4 sm:p-6 lg:p-8">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {/* Overall Attendance */}
-            <Card className="p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-xl">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="text-blue-100 text-sm font-medium mb-1">Overall Attendance</p>
-                  <h3 className="text-3xl font-bold">{stats.overallAttendance}%</h3>
-                </div>
-                <div className="p-3 bg-white/20 rounded-xl">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-              </div>
-              <div className="flex items-center space-x-2 text-sm">
-                <div className="flex-1 bg-white/20 rounded-full h-2">
-                  <div 
-                    className="bg-white rounded-full h-2 transition-all duration-500" 
-                    style={{ width: `${stats.overallAttendance}%` }}
-                  ></div>
-                </div>
-                <span className="text-blue-100">+5%</span>
-              </div>
-            </Card>
-
-            {/* Total Classes */}
-            <Card className="p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1">Total Classes</p>
-                  <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalClasses}</h3>
-                </div>
-                <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
-                  <BookOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Enrolled this semester</p>
-            </Card>
-
-            {/* Classes Today */}
-            <Card className="p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1">Classes Today</p>
-                  <h3 className="text-3xl font-bold text-gray-900 dark:text-white">{stats.classesToday}</h3>
-                </div>
-                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
-                  <Calendar className="w-6 h-6 text-green-600 dark:text-green-400" />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">On your schedule</p>
-            </Card>
-
-            {/* Attendance Streak */}
-            <Card className="p-6 bg-gradient-to-br from-orange-500 to-red-500 text-white border-0 shadow-xl">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="text-orange-100 text-sm font-medium mb-1">Attendance Streak</p>
-                  <h3 className="text-3xl font-bold">{stats.attendanceStreak}</h3>
-                </div>
-                <div className="p-3 bg-white/20 rounded-xl">
-                  <CheckCircle className="w-6 h-6" />
-                </div>
-              </div>
-              <p className="text-sm text-orange-100">🔥 Days in a row</p>
-            </Card>
-          </div>
-
-          {/* Today's Schedule & Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Today's Schedule */}
-            <Card className="lg:col-span-2 p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                  <Clock className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" />
-                  Today's Schedule
-                </h3>
-                <Link href="/student/schedule">
-                  <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400">
-                    View All <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
-              
               <div className="space-y-4">
-                {todayClasses.map((session) => (
-                  <div 
-                    key={session.id} 
-                    className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition-shadow bg-gray-50 dark:bg-gray-900/50"
+                {todayClasses.map((classData) => (
+                  <div
+                    key={classData.id}
+                    className="p-4 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 hover:shadow-lg transition-all duration-200"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-semibold rounded-full">
-                            {session.class_code}
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                            {classData.class_code}
+                          </h3>
+                          <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold rounded-full">
+                            {classData.status}
                           </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{session.status}</span>
                         </div>
-                        <h4 className="font-semibold text-gray-900 dark:text-white mb-2">{session.class_name}</h4>
-                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          <p className="flex items-center">
-                            <Clock className="w-4 h-4 mr-2" />
-                            {session.time}
-                          </p>
-                          <p className="flex items-center">
-                            <MapPin className="w-4 h-4 mr-2" />
-                            {session.room}
-                          </p>
-                          <p className="flex items-center">
-                            <User className="w-4 h-4 mr-2" />
-                            {session.professor}
-                          </p>
+                        <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                          {classData.class_name}
+                        </h4>
+                        <div className="flex items-center space-x-4 text-xs text-slate-600 dark:text-slate-400">
+                          <span className="flex items-center font-medium">
+                            <Clock className="w-3 h-3 mr-1" />
+                            {classData.time}
+                          </span>
+                          <span className="flex items-center font-medium">
+                            <MapPin className="w-3 h-3 mr-1" />
+                            {classData.room}
+                          </span>
+                          <span className="flex items-center font-medium">
+                            <User className="w-3 h-3 mr-1" />
+                            {classData.professor}
+                          </span>
                         </div>
                       </div>
-                      <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
-                        <QrCode className="w-4 h-4 mr-2" />
-                        Mark Attendance
-                      </Button>
+                      <div className="ml-4">
+                        <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
+                          <QrCode className="w-4 h-4 mr-1" />
+                          Scan
+                        </Button>
+                      </div>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Recent Attendance */}
+          <div className="space-y-6">
+            <Card className="p-5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <BarChart3 className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Recent Attendance</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Last 6 sessions</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {recentAttendance.slice(0, 6).map((record, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`p-2 rounded-lg ${getStatusColor(record.status)}`}>
+                        {getStatusIcon(record.status)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {record.class_name}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(record.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(record.status)}`}>
+                      {record.status}
+                    </span>
                   </div>
                 ))}
               </div>
             </Card>
 
             {/* Quick Actions */}
-            <div className="space-y-4">
-              <Card className="p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow cursor-pointer group">
-                <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl mb-4 group-hover:scale-105 transition-transform">
-                  <QrCode className="w-8 h-8 text-white mx-auto" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-white text-center mb-2">Scan QR Code</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-4">Mark your attendance</p>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700">Open Scanner</Button>
-              </Card>
-
-              <Card className="p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow cursor-pointer group">
-                <div className="p-4 bg-gradient-to-br from-green-500 to-green-600 rounded-xl mb-4 group-hover:scale-105 transition-transform">
-                  <BarChart3 className="w-8 h-8 text-white mx-auto" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-white text-center mb-2">View Reports</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-4">Detailed analytics</p>
-                <Button variant="outline" className="w-full border-gray-300 dark:border-gray-600">View History</Button>
-              </Card>
-            </div>
-          </div>
-
-          {/* Recent Attendance */}
-          <Card className="p-6 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                <CheckCircle className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" />
-                Recent Attendance
-              </h3>
-              <Link href="/student/attendance">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400">
-                  View All <ChevronRight className="w-4 h-4 ml-1" />
+            <Card className="p-5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <Button className="w-full justify-start bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-lg shadow-lg">
+                  <QrCode className="w-4 h-4 mr-3" />
+                  Scan QR Code
                 </Button>
-              </Link>
-            </div>
-            
-            <div className="space-y-3">
-              {recentAttendance.map((record, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className={`p-2 rounded-lg ${getStatusColor(record.status)}`}>
-                      {getStatusIcon(record.status)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{record.class_name}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{record.date}</p>
-                    </div>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(record.status)}`}>
-                    {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </main>
-      </div>
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-slate-300 dark:border-slate-600 rounded-lg">
+                  <BarChart3 className="w-4 h-4 mr-3" />
+                  View Attendance
+                </Button>
+                <Button variant="outline" className="w-full justify-start hover:bg-slate-50 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-lg">
+                  <Calendar className="w-4 h-4 mr-3" />
+                  View Schedule
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
 
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
+      {/* Profile Edit Modal */}
+      <ProfileEditModal
+        isOpen={showProfileEdit}
+        onClose={() => setShowProfileEdit(false)}
+        user={user}
+        userProfile={userProfile}
+        onSave={handleProfileSave}
+      />
+
+      {/* Password Change Modal */}
+      <PasswordChangeModal
+        isOpen={showPasswordChange}
+        onClose={() => setShowPasswordChange(false)}
+        onChangePassword={handlePasswordChange}
+      />
     </div>
   );
 }

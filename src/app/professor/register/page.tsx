@@ -61,10 +61,18 @@ export default function ProfessorRegisterPage() {
     }
   }, [user, userRole, loading, router]);
 
-  const handleInputChange = (field: string) => (value: string) => {
+  const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e?.target?.value || '';
     setFormData(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  const handlePasswordChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      password: value
     }));
   };
 
@@ -80,9 +88,24 @@ export default function ProfessorRegisterPage() {
         return;
       }
 
+      // Validate password length
+      if (formData.password.length < 12) {
+        setError('Password must be at least 12 characters long for security');
+        return;
+      }
+
+      // Email validation (domain and uniqueness) will be handled by auth context
+
       // Validate required fields
       if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.employeeId) {
         setError('Please fill in all required fields');
+        return;
+      }
+
+      // Client-side employee ID validation
+      const employeeIdRegex = /^\d{7}$/;
+      if (!employeeIdRegex.test(formData.employeeId.trim())) {
+        setError('Employee ID must be exactly 7 digits.\n\n💡 Example: 1234567\n\nPlease enter your official employee ID number.');
         return;
       }
 
@@ -112,9 +135,32 @@ export default function ProfessorRegisterPage() {
         console.error('❌ Professor registration failed:', result.error);
         setError(result.error || 'Registration failed. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Professor registration error:', err);
-      setError('Registration failed. Please try again.');
+      
+      // Extract specific error message
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.error) {
+        errorMessage = err.error;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      // Handle specific Supabase errors
+      if (errorMessage.includes('already registered') || errorMessage.includes('already exists')) {
+        errorMessage = `This email is already registered.\n\n💡 Please sign in instead at /professor/login`;
+      } else if (errorMessage.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please check your credentials.';
+      } else if (errorMessage.includes('Password should be at least')) {
+        errorMessage = 'Password must be at least 6 characters long.';
+      } else if (errorMessage.includes('Invalid email')) {
+        errorMessage = 'Please enter a valid email address.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -272,7 +318,7 @@ export default function ProfessorRegisterPage() {
 
                 <div>
                   <label htmlFor="email" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Email Address *
+                    Email Address * <span className="text-xs text-gray-500 dark:text-gray-400">(@furman.edu only)</span>
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -288,6 +334,19 @@ export default function ProfessorRegisterPage() {
                       placeholder="professor@furman.edu"
                     />
                   </div>
+                  {formData.email && formData.email.length > 0 && (
+                    <p className={`mt-2 text-sm flex items-center ${
+                      formData.email.endsWith('@furman.edu') 
+                        ? 'text-green-600 dark:text-green-400' 
+                        : 'text-orange-600 dark:text-orange-400'
+                    }`}>
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {formData.email.endsWith('@furman.edu')
+                        ? '✓ Valid Furman email format'
+                        : 'Only @furman.edu email addresses are allowed'
+                      }
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -305,7 +364,9 @@ export default function ProfessorRegisterPage() {
                       value={formData.employeeId}
                       onChange={handleInputChange('employeeId')}
                       className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 dark:text-white"
-                      placeholder="EMP001"
+                      placeholder="1234567"
+                      maxLength={7}
+                      pattern="[0-9]{7}"
                     />
                   </div>
                 </div>
@@ -373,12 +434,10 @@ export default function ProfessorRegisterPage() {
                   </label>
                   <PasswordInputWithStrength
                     value={formData.password}
-                    onChange={handleInputChange('password')}
+                    onChange={handlePasswordChange}
                     onValidationChange={setIsPasswordValid}
                     placeholder="Create a strong password"
                     id="password"
-                    name="password"
-                    autoComplete="new-password"
                     required
                     showRequirements={true}
                   />

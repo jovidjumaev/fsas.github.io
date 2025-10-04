@@ -166,12 +166,10 @@ export default function ProfessorLogin() {
                     </div>
                     <Input
                       id="email"
-                      name="email"
                       type="email"
-                      autoComplete="email"
                       required
                       value={email}
-                      onChange={setEmail}
+                      onChange={(e) => setEmail(e.target.value)}
                       className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 dark:text-white"
                       placeholder="professor@furman.edu"
                     />
@@ -188,12 +186,10 @@ export default function ProfessorLogin() {
                     </div>
                     <Input
                       id="password"
-                      name="password"
                       type="password"
-                      autoComplete="current-password"
                       required
                       value={password}
-                      onChange={setPassword}
+                      onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 dark:text-white"
                       placeholder="Enter your password"
                     />

@@ -222,7 +222,7 @@ export interface InputProps extends ComponentProps {
   type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'date' | 'time';
   placeholder?: string;
   value?: string | number;
-  onChange?: (value: string) => void;
+  onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   error?: string;
   disabled?: boolean;
   required?: boolean;

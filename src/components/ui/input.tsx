@@ -25,7 +25,7 @@ export function Input({
         type={type}
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange?.(e.target.value)}
+        onChange={onChange}
         disabled={disabled}
         required={required}
         min={min}

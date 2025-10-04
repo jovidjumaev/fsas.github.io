@@ -37,7 +37,8 @@ export default function RegisterPage() {
     }
   }, [user, userRole, loading, router]);
 
-  const handleInputChange = (field: string) => (value: string) => {
+  const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e?.target?.value || '';
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -58,11 +59,13 @@ export default function RegisterPage() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (formData.password.length < 12) {
+      setError('Password must be at least 12 characters long for security');
       setIsLoading(false);
       return;
     }
+
+    // Email validation (domain and uniqueness) will be handled by auth context
 
     if (formData.role === 'student' && !formData.studentNumber) {
       setError('Student number is required');
@@ -93,9 +96,32 @@ export default function RegisterPage() {
         console.error('Registration failed:', result.error);
         setError(result.error || 'Registration failed. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Registration error:', err);
-      setError('Registration failed. Please try again.');
+      
+      // Extract specific error message
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.error) {
+        errorMessage = err.error;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      // Handle specific Supabase errors
+      if (errorMessage.includes('already registered') || errorMessage.includes('already exists')) {
+        errorMessage = `This email is already registered.\n\n💡 Please sign in instead at /${formData.role}/login`;
+      } else if (errorMessage.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please check your credentials.';
+      } else if (errorMessage.includes('Password should be at least')) {
+        errorMessage = 'Password must be at least 6 characters long.';
+      } else if (errorMessage.includes('Invalid email')) {
+        errorMessage = 'Please enter a valid email address.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -199,7 +225,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email Address
+                Email Address * <span className="text-xs text-gray-500">(@furman.edu only)</span>
               </label>
               <Input
                 id="email"
@@ -210,6 +236,19 @@ export default function RegisterPage() {
                 className="mt-1"
                 placeholder="your.email@furman.edu"
               />
+              {formData.email && formData.email.length > 0 && (
+                <p className={`mt-2 text-sm flex items-center ${
+                  formData.email.endsWith('@furman.edu') 
+                    ? 'text-green-600' 
+                    : 'text-orange-600'
+                }`}>
+                  <span className="mr-1">⚠</span>
+                  {formData.email.endsWith('@furman.edu')
+                    ? '✓ Valid Furman email format'
+                    : 'Only @furman.edu email addresses are allowed'
+                  }
+                </p>
+              )}
             </div>
 
             {/* Role-specific fields */}
@@ -217,7 +256,7 @@ export default function RegisterPage() {
               <>
                 <div>
                   <label htmlFor="studentNumber" className="block text-sm font-medium text-gray-700">
-                    Student Number
+                    Student ID Number * <span className="text-xs text-gray-500">(7 digits)</span>
                   </label>
                   <Input
                     id="studentNumber"
@@ -226,8 +265,24 @@ export default function RegisterPage() {
                     value={formData.studentNumber}
                     onChange={handleInputChange('studentNumber')}
                     className="mt-1"
-                    placeholder="S2024001"
+                    placeholder="5002378"
+                    maxLength={7}
+                    pattern="\d{7}"
+                    title="Student ID must be exactly 7 digits"
                   />
+                  {formData.studentNumber && formData.studentNumber.length > 0 && (
+                    <p className={`mt-2 text-sm flex items-center ${
+                      /^\d{7}$/.test(formData.studentNumber) 
+                        ? 'text-green-600' 
+                        : 'text-orange-600'
+                    }`}>
+                      <span className="mr-1">⚠</span>
+                      {/^\d{7}$/.test(formData.studentNumber)
+                        ? '✓ Valid student ID format'
+                        : `${formData.studentNumber.length}/7 digits - Must be exactly 7 digits`
+                      }
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="major" className="block text-sm font-medium text-gray-700">

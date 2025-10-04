@@ -29,6 +29,19 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true
+  },
+  global: {
+    headers: {
+      'x-client-info': 'fsas-web'
+    },
+  },
+  db: {
+    schema: 'public',
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 });
 
@@ -40,6 +53,14 @@ export const supabaseAdmin = createClient<Database>(
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    global: {
+      headers: {
+        'x-client-info': 'fsas-admin'
+      },
+    },
+    db: {
+      schema: 'public',
     }
   }
 );
@@ -49,7 +70,7 @@ export class DatabaseService {
   // User operations
   static async getUserProfile(userId: string) {
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('users')
       .select('*')
       .eq('id', userId)
       .single();
@@ -60,14 +81,13 @@ export class DatabaseService {
 
   static async createUserProfile(profile: {
     id: string;
-    student_id: string;
+    email: string;
     first_name: string;
     last_name: string;
-    email: string;
     role: 'student' | 'professor' | 'admin';
   }) {
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('users')
       .insert(profile)
       .select()
       .single();
@@ -82,7 +102,7 @@ export class DatabaseService {
       .from('courses')
       .select(`
         *,
-        user_profiles!courses_professor_id_fkey(first_name, last_name)
+        users!courses_professor_id_fkey(first_name, last_name)
       `)
       .eq('professor_id', professorId)
       .order('created_at', { ascending: false });
@@ -119,7 +139,7 @@ export class DatabaseService {
           student_id,
           scanned_at,
           status,
-          user_profiles!attendance_records_student_id_fkey(first_name, last_name, student_id)
+          users!attendance_records_student_id_fkey(first_name, last_name, student_id)
         )
       `)
       .eq('course_id', courseId)
@@ -176,7 +196,7 @@ export class DatabaseService {
       .insert(attendance)
       .select(`
         *,
-        user_profiles!attendance_records_student_id_fkey(first_name, last_name, student_id)
+        users!attendance_records_student_id_fkey(first_name, last_name, student_id)
       `)
       .single();
     
@@ -189,7 +209,7 @@ export class DatabaseService {
       .from('attendance_records')
       .select(`
         *,
-        user_profiles!attendance_records_student_id_fkey(first_name, last_name, student_id)
+        users!attendance_records_student_id_fkey(first_name, last_name, student_id)
       `)
       .eq('session_id', sessionId)
       .order('scanned_at', { ascending: false });
@@ -219,7 +239,7 @@ export class DatabaseService {
         session_date,
         attendance_records(
           status,
-          user_profiles!attendance_records_student_id_fkey(student_id)
+          users!attendance_records_student_id_fkey(student_id)
         )
       `)
       .eq('course_id', courseId);

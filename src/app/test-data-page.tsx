@@ -29,7 +29,7 @@ export default function TestDataPage() {
         name: 'User Profiles Table',
         test: async () => {
           const { data, error } = await supabase
-            .from('user_profiles')
+            .from('users')
             .select('*')
             .limit(5);
           return { success: !error, data, error: error?.message };

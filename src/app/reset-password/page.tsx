@@ -76,6 +76,10 @@ export default function ResetPassword() {
       }
 
       // Call password update function from auth context
+      if (!token) {
+        setError('Invalid reset token');
+        return;
+      }
       const result = await updatePassword(token, password, type as 'student' | 'professor');
 
       if (result.success) {
@@ -221,15 +225,12 @@ export default function ResetPassword() {
               </label>
               <Input
                 id="password"
-                name="password"
                 type="password"
-                autoComplete="new-password"
                 required
                 value={password}
-                onChange={setPassword}
+                onChange={(e) => setPassword(e.target.value)}
                 className="mt-1"
                 placeholder="Enter new password"
-                minLength={6}
               />
               <p className="mt-1 text-xs text-gray-500">
                 Password must be at least 6 characters long
@@ -242,15 +243,12 @@ export default function ResetPassword() {
               </label>
               <Input
                 id="confirmPassword"
-                name="confirmPassword"
                 type="password"
-                autoComplete="new-password"
                 required
                 value={confirmPassword}
-                onChange={setConfirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 className="mt-1"
                 placeholder="Confirm new password"
-                minLength={6}
               />
             </div>
 

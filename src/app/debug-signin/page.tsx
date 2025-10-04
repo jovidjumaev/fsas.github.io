@@ -23,7 +23,7 @@ export default function DebugSignIn() {
       const result = await signIn(email, password, role);
       setResult(result);
       console.log('🧪 DEBUG: Sign-in result:', result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('🧪 DEBUG: Sign-in error:', error);
       setResult({ success: false, error: error.message });
     } finally {
@@ -45,7 +45,7 @@ export default function DebugSignIn() {
                 <label className="block text-sm font-medium mb-2">Email</label>
                 <Input
                   value={email}
-                  onChange={setEmail}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter email"
                 />
               </div>
@@ -55,7 +55,7 @@ export default function DebugSignIn() {
                 <Input
                   type="password"
                   value={password}
-                  onChange={setPassword}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
                 />
               </div>

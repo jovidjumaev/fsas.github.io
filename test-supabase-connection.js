@@ -1,77 +1,94 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-async function testSupabaseConnection() {
-  console.log('🔍 Testing Supabase Connection...\n');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Check environment variables
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+console.log('Testing Supabase connection...');
+console.log('URL:', supabaseUrl);
+console.log('Key:', supabaseKey ? 'Present' : 'Missing');
 
-  console.log('📋 Environment Variables:');
-  console.log(`   URL: ${supabaseUrl ? '✅ Set' : '❌ Missing'}`);
-  console.log(`   Key: ${supabaseKey ? '✅ Set' : '❌ Missing'}\n`);
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Missing Supabase credentials');
+  process.exit(1);
+}
 
-  if (!supabaseUrl || !supabaseKey) {
-    console.log('❌ Missing required environment variables!');
-    console.log('Please check your .env.local file.\n');
-    return;
-  }
+const supabase = createClient(supabaseUrl, supabaseKey);
 
+async function testConnection() {
   try {
-    // Create Supabase client
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('🔗 Supabase client created successfully\n');
-
     // Test basic connection
-    console.log('🧪 Testing basic connection...');
-    const { data: authData, error: authError } = await supabase.auth.getSession();
+    console.log('\n1. Testing basic connection...');
+    const { data, error } = await supabase.from('users').select('count').limit(1);
+    
+    if (error) {
+      console.error('❌ Connection failed:', error.message);
+      return;
+    }
+    
+    console.log('✅ Basic connection successful');
+    
+    // Test auth signup
+    console.log('\n2. Testing auth signup...');
+    const testEmail = `test-${Date.now()}@furman.edu`;
+    const testPassword = 'testpassword123';
+    
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: testEmail,
+      password: testPassword,
+    });
     
     if (authError) {
-      console.log(`❌ Auth test failed: ${authError.message}\n`);
-    } else {
-      console.log('✅ Auth connection successful\n');
+      console.error('❌ Auth signup failed:', authError.message);
+      return;
     }
-
-    // Test database connection
-    console.log('🧪 Testing database connection...');
-    const { data: dbData, error: dbError } = await supabase
-      .from('user_profiles')
-      .select('count')
-      .limit(1);
-
-    if (dbError) {
-      console.log(`❌ Database test failed: ${dbError.message}`);
-      console.log('This might be expected if the schema is not yet applied.\n');
-    } else {
-      console.log('✅ Database connection successful\n');
+    
+    console.log('✅ Auth signup successful');
+    console.log('User ID:', authData.user?.id);
+    
+    // Test user profile creation
+    console.log('\n3. Testing user profile creation...');
+    const { error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
+        email: authData.user.email,
+        first_name: 'Test',
+        last_name: 'User',
+        role: 'student',
+        is_active: true
+      });
+    
+    if (userError) {
+      console.error('❌ User profile creation failed:', userError.message);
+      return;
     }
-
-    // Test if we can access the project
-    console.log('🧪 Testing project access...');
-    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`
-      }
-    });
-
-    if (response.ok) {
-      console.log('✅ Project is accessible\n');
-    } else {
-      console.log(`❌ Project access failed: ${response.status} ${response.statusText}\n`);
+    
+    console.log('✅ User profile creation successful');
+    
+    // Test student profile creation
+    console.log('\n4. Testing student profile creation...');
+    const { error: studentError } = await supabase
+      .from('students')
+      .insert({
+        user_id: authData.user.id,
+        student_id: `S${Date.now()}`,
+        enrollment_year: 2024,
+        major: 'Computer Science'
+      });
+    
+    if (studentError) {
+      console.error('❌ Student profile creation failed:', studentError.message);
+      return;
     }
-
-    console.log('🎉 Supabase connection test completed!');
-    console.log('\n📝 Next steps:');
-    console.log('1. If any tests failed, check your Supabase project settings');
-    console.log('2. Apply the database schema from database/schema.sql');
-    console.log('3. Test the application with: npm run dev');
-
+    
+    console.log('✅ Student profile creation successful');
+    
+    console.log('\n🎉 All tests passed! Supabase is working correctly.');
+    
   } catch (error) {
-    console.log(`❌ Connection test failed: ${error.message}\n`);
-    console.log('Please check your Supabase project configuration.');
+    console.error('❌ Unexpected error:', error);
   }
 }
 
-testSupabaseConnection();
+testConnection();
