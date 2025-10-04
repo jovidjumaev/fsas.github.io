@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
-import { NotificationPanel } from '@/components/notifications/notification-panel';
 import { 
   BookOpen, Users, Calendar, Plus, Search, Filter, 
   MoreHorizontal, Edit, Trash2, QrCode, BarChart3,
@@ -17,6 +16,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import ProfessorHeader from '@/components/professor/professor-header';
+import ProfileEditModal from '@/components/profile/profile-edit-modal';
+import PasswordChangeModal from '@/components/profile/password-change-modal';
+import { supabase } from '@/lib/supabase';
 
 interface ClassData {
   id: string;
@@ -44,19 +47,32 @@ interface ClassData {
   performance_grade?: 'excellent' | 'good' | 'average' | 'needs_attention';
 }
 
-interface CreateClassForm {
+interface AvailableCourse {
+  id: string;
   code: string;
   name: string;
   description: string;
+  credits: number;
+  department_name: string;
+}
+
+interface CreateClassForm {
+  selected_course_id: string;
   room_location: string;
   schedule_info: string;
   max_students: number;
-  credits: number;
+  // Schedule details
+  days: string[];
+  start_time: string;
+  end_time: string;
+  // Additional options
+  custom_schedule: string;
 }
 
 function ClassesPageContent() {
   const { user, signOut } = useAuth();
   const [classes, setClasses] = useState<ClassData[]>([]);
+  const [availableCourses, setAvailableCourses] = useState<AvailableCourse[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<ClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,15 +82,19 @@ function ClassesPageContent() {
   const [selectedClass, setSelectedClass] = useState<ClassData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
 
   const [createForm, setCreateForm] = useState<CreateClassForm>({
-    code: '',
-    name: '',
-    description: '',
+    selected_course_id: '',
     room_location: '',
     schedule_info: '',
     max_students: 30,
-    credits: 3
+    days: [],
+    start_time: '',
+    end_time: '',
+    custom_schedule: ''
   });
 
   useEffect(() => {
@@ -105,6 +125,8 @@ function ClassesPageContent() {
 
   useEffect(() => {
     fetchClasses();
+    fetchAvailableCourses();
+    fetchUserProfile();
   }, [user]);
 
   useEffect(() => {
@@ -114,104 +136,36 @@ function ClassesPageContent() {
   const fetchClasses = async () => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!user?.id) return;
       
-      const mockClasses: ClassData[] = [
-        {
-          id: '1',
-          code: 'CSC-475',
-          name: 'Seminar in Computer Science',
-          description: 'Advanced topics in computer science research and development with focus on emerging technologies',
-          room_location: 'Room 101',
-          schedule_info: 'MWF 10:00-10:50',
-          max_students: 25,
-          enrolled_students: 18,
-          credits: 3,
-          academic_period: 'Fall 2024',
-          year: 2024,
-          semester: 'Fall',
-          department_name: 'Computer Science',
-          is_active: true,
-          created_at: '2024-08-15T00:00:00Z',
-          attendance_rate: 89.5,
-          total_sessions: 24,
-          active_sessions: 1,
-          performance_grade: 'excellent',
-          next_session: {
-            date: new Date().toISOString().split('T')[0],
-            start_time: '10:00'
-          }
-        },
-        {
-          id: '2',
-          code: 'CSC-301',
-          name: 'Data Structures and Algorithms',
-          description: 'Comprehensive study of fundamental data structures and algorithmic problem-solving techniques',
-          room_location: 'Room 205',
-          schedule_info: 'MWF 14:00-14:50',
-          max_students: 30,
-          enrolled_students: 28,
-          credits: 4,
-          academic_period: 'Fall 2024',
-          year: 2024,
-          semester: 'Fall',
-          department_name: 'Computer Science',
-          is_active: true,
-          created_at: '2024-08-15T00:00:00Z',
-          attendance_rate: 94.2,
-          total_sessions: 24,
-          active_sessions: 0,
-          performance_grade: 'excellent'
-        },
-        {
-          id: '3',
-          code: 'CSC-150',
-          name: 'Introduction to Programming',
-          description: 'Basic programming concepts, problem-solving techniques, and computational thinking',
-          room_location: 'Room 110',
-          schedule_info: 'TTh 09:00-10:15',
-          max_students: 35,
-          enrolled_students: 32,
-          credits: 3,
-          academic_period: 'Fall 2024',
-          year: 2024,
-          semester: 'Fall',
-          department_name: 'Computer Science',
-          is_active: true,
-          created_at: '2024-08-15T00:00:00Z',
-          attendance_rate: 76.8,
-          total_sessions: 16,
-          active_sessions: 0,
-          performance_grade: 'needs_attention'
-        },
-        {
-          id: '4',
-          code: 'CSC-200',
-          name: 'Computer Systems Architecture',
-          description: 'Computer architecture, systems programming, and low-level computing concepts',
-          room_location: 'Room 120',
-          schedule_info: 'TTh 14:00-15:15',
-          max_students: 25,
-          enrolled_students: 22,
-          credits: 4,
-          academic_period: 'Fall 2024',
-          year: 2024,
-          semester: 'Fall',
-          department_name: 'Computer Science',
-          is_active: false,
-          created_at: '2024-08-15T00:00:00Z',
-          attendance_rate: 88.3,
-          total_sessions: 16,
-          active_sessions: 0,
-          performance_grade: 'good'
-        }
-      ];
+      const response = await fetch(`http://localhost:3001/api/professors/${user.id}/classes`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch classes');
+      }
       
-      setClasses(mockClasses);
+      const data = await response.json();
+      setClasses(data.classes || []);
     } catch (error) {
       console.error('Error fetching classes:', error);
+      // Fallback to empty array if API fails
+      setClasses([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAvailableCourses = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/courses');
+      if (!response.ok) {
+        throw new Error('Failed to fetch available courses');
+      }
+      
+      const data = await response.json();
+      setAvailableCourses(data.courses || []);
+    } catch (error) {
+      console.error('Error fetching available courses:', error);
+      setAvailableCourses([]);
     }
   };
 
@@ -269,17 +223,55 @@ function ClassesPageContent() {
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      console.log('Creating class:', createForm);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!user?.id) return;
+      
+      // Generate schedule info from days and times
+      let scheduleInfo = createForm.custom_schedule;
+      if (!scheduleInfo && createForm.days.length > 0 && createForm.start_time && createForm.end_time) {
+        const dayAbbrevs = createForm.days.map(day => {
+          switch(day) {
+            case 'Monday': return 'M';
+            case 'Tuesday': return 'T';
+            case 'Wednesday': return 'W';
+            case 'Thursday': return 'Th';
+            case 'Friday': return 'F';
+            case 'Saturday': return 'S';
+            case 'Sunday': return 'Su';
+            default: return day.substring(0, 2);
+          }
+        });
+        scheduleInfo = `${dayAbbrevs.join('')} ${createForm.start_time}-${createForm.end_time}`;
+      }
+      
+      const classData = {
+        course_id: createForm.selected_course_id,
+        professor_id: user.id,
+        room_location: createForm.room_location,
+        schedule_info: scheduleInfo,
+        max_students: createForm.max_students
+      };
+      
+      const response = await fetch('http://localhost:3001/api/classes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(classData),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create class');
+      }
       
       setCreateForm({
-        code: '',
-        name: '',
-        description: '',
+        selected_course_id: '',
         room_location: '',
         schedule_info: '',
         max_students: 30,
-        credits: 3
+        days: [],
+        start_time: '',
+        end_time: '',
+        custom_schedule: ''
       });
       setShowCreateForm(false);
       await fetchClasses();
@@ -326,6 +318,301 @@ function ClassesPageContent() {
     return 'text-red-600 dark:text-red-400';
   };
 
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('🔍 Fetching user profile for user ID:', user.id);
+      console.log('🔍 User metadata:', user.user_metadata);
+      
+      const { data, error } = await supabase
+        .from('users' as any)
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        console.log('🔍 Falling back to user metadata');
+        
+        // Create a basic profile from user metadata
+        const fallbackProfile = {
+          first_name: user.user_metadata?.first_name || 'User',
+          last_name: user.user_metadata?.last_name || '',
+          email: user.email || '',
+          role: user.user_metadata?.role || 'professor',
+          phone: user.user_metadata?.phone || '',
+          office_location: user.user_metadata?.office_location || '',
+          title: user.user_metadata?.title || ''
+        };
+        
+        console.log('🔍 Using fallback profile:', fallbackProfile);
+        setUserProfile(fallbackProfile);
+        return;
+      }
+      
+      // Combine database data with auth metadata for complete profile
+      const completeProfile = {
+        ...(data as any || {}),
+        phone: user.user_metadata?.phone || '',
+        office_location: user.user_metadata?.office_location || '',
+        title: user.user_metadata?.title || ''
+      };
+      
+      console.log('✅ User profile fetched:', completeProfile);
+      setUserProfile(completeProfile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const handleProfileSave = async (profileData: any) => {
+    if (!user) return;
+    
+    try {
+      console.log('Attempting to save profile data:', profileData);
+      console.log('User ID:', user.id);
+      
+      // Check if names changed and handle name change tracking
+      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
+      
+      if (namesChanged) {
+        console.log('Names changed, checking name change limits...');
+        
+        // Import and use the name change service
+        const { NameChangeService } = await import('@/lib/name-change-service');
+        
+        // Check if user can change their name
+        const nameChangeInfo = await NameChangeService.getNameChangeInfo(user.id);
+        
+        if (!nameChangeInfo.canChange) {
+          throw new Error('Name change limit reached for this month. Please try again next month.');
+        }
+        
+        // Record the name change
+        const nameChangeResult = await NameChangeService.changeName(
+          user.id,
+          userProfile?.first_name || '',
+          userProfile?.last_name || '',
+          profileData.first_name,
+          profileData.last_name,
+          profileData.nameChangeReason || 'Name change via profile edit'
+        );
+        
+        if (!nameChangeResult.success) {
+          throw new Error(nameChangeResult.message);
+        }
+        
+        console.log('Name change recorded successfully:', nameChangeResult);
+      }
+      
+      // Separate data for users table (only basic fields that exist)
+      const usersTableData = {
+        first_name: profileData.first_name,
+        last_name: profileData.last_name,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Update the users table with only existing columns
+      const { error: usersError } = await supabase
+        .from('users' as any)
+        .update(usersTableData)
+        .eq('id', user.id);
+      
+      if (usersError) {
+        console.error('Error updating users table:', usersError);
+        throw new Error(`Failed to save profile: ${usersError.message}`);
+      }
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, ...profileData }));
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      throw error;
+    }
+  };
+
+  const handlePasswordChange = async (currentPassword: string, newPassword: string) => {
+    try {
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Get user profile information for validation
+      const { data: profileData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+
+      const { data: professorData } = await supabase
+        .from('professors')
+        .select('employee_id')
+        .eq('user_id', user.id)
+        .single();
+
+      // Import and use the password change service
+      const { PasswordChangeService } = await import('@/lib/password-change-service');
+      
+      const result = await PasswordChangeService.changePassword(
+        user.id,
+        user.email || '',
+        currentPassword,
+        newPassword,
+        {
+          firstName: profileData?.first_name || user.user_metadata?.first_name,
+          lastName: profileData?.last_name || user.user_metadata?.last_name,
+          employeeId: professorData?.employee_id
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Password change failed');
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!user) {
+      console.error('No user found for avatar upload');
+      throw new Error('User not authenticated');
+    }
+    
+    try {
+      console.log('Starting avatar upload for user:', user.id);
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.');
+      }
+      
+      // Validate file size (5MB limit)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new Error('File size too large. Please upload an image smaller than 5MB.');
+      }
+      
+      // Create a unique filename
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const fileName = `${user.id}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+      
+      console.log('Uploading file to path:', filePath);
+      
+      // Upload file to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+      
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      }
+      
+      console.log('File uploaded successfully:', uploadData);
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      
+      console.log('Public URL generated:', publicUrl);
+      
+      // Update user profile with avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+      
+      console.log('Avatar upload completed successfully');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!user) {
+      console.error('No user found for avatar deletion');
+      throw new Error('User not authenticated');
+    }
+    
+    try {
+      console.log('Starting avatar deletion for user:', user.id);
+      
+      // Get current avatar URL to extract file path
+      const currentAvatarUrl = userProfile?.avatar_url;
+      if (!currentAvatarUrl) {
+        throw new Error('No avatar to delete');
+      }
+      
+      // Extract file path from URL
+      const urlParts = currentAvatarUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1];
+      const filePath = `avatars/${fileName}`;
+      
+      console.log('Deleting file from path:', filePath);
+      
+      // Delete file from Supabase Storage
+      const { error: deleteError } = await supabase.storage
+        .from('avatars')
+        .remove([filePath]);
+      
+      if (deleteError) {
+        console.error('Storage deletion error:', deleteError);
+        throw new Error(`Failed to delete file: ${deleteError.message}`);
+      }
+      
+      console.log('File deleted successfully from storage');
+      
+      // Update user profile to remove avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: null }));
+      
+      console.log('Avatar deletion completed successfully');
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      throw error;
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
   };
@@ -340,101 +627,16 @@ function ClassesPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      {/* Top Navigation - Clean & Minimal */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/professor/dashboard" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white">FSAS</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Professor Portal</p>
-              </div>
-            </Link>
-
-            {/* Navigation */}
-            <nav className="hidden lg:flex items-center space-x-1">
-              <Link href="/professor/dashboard">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/professor/classes">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900 hover:bg-blue-100 dark:hover:bg-blue-800">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Classes
-                </Button>
-              </Link>
-              <Link href="/professor/sessions">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Sessions
-                </Button>
-              </Link>
-              <Link href="/professor/students">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Users className="w-4 h-4 mr-2" />
-                  Students
-                </Button>
-              </Link>
-              <Link href="/professor/analytics">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  Analytics
-                </Button>
-              </Link>
-            </nav>
-
-            {/* Right Actions */}
-            <div className="flex items-center space-x-3">
-              {/* Time */}
-              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <Clock className="w-4 h-4 text-slate-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-
-              {/* Notifications */}
-              <NotificationPanel />
-
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                {isDarkMode ? (
-                  <Sun className="w-5 h-5 text-amber-500" />
-                ) : (
-                  <Moon className="w-5 h-5 text-slate-600" />
-                )}
-              </button>
-
-              {/* User */}
-              <div className="flex items-center space-x-3">
-                <div className="hidden sm:block text-right">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Prof. {(user as any)?.first_name || 'Professor'}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-32">
-                    {user?.email}
-                  </p>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header */}
+      <ProfessorHeader
+        currentPage="classes"
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
+        onEditProfile={() => setShowProfileEdit(true)}
+        onChangePassword={() => setShowPasswordChange(true)}
+        onUploadAvatar={handleAvatarUpload}
+        onDeleteAvatar={handleAvatarDelete}
+      />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -736,75 +938,63 @@ function ClassesPageContent() {
               </div>
 
               <form onSubmit={handleCreateClass} className="space-y-6">
+                {/* Course Selection */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Select Course *
+                  </label>
+                  <select
+                    value={createForm.selected_course_id}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, selected_course_id: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                    required
+                  >
+                    <option value="">Choose a course...</option>
+                    {availableCourses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code} - {course.name} ({course.credits} credits)
+                      </option>
+                    ))}
+                  </select>
+                  {createForm.selected_course_id && (
+                    <div className="mt-2 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                      {(() => {
+                        const selectedCourse = availableCourses.find(c => c.id === createForm.selected_course_id);
+                        return selectedCourse ? (
+                          <div>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">
+                              {selectedCourse.code} - {selectedCourse.name}
+                            </p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                              {selectedCourse.description}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              {selectedCourse.credits} credits • {selectedCourse.department_name}
+                            </p>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Room and Max Students */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Course Code *
+                      Room Location *
                     </label>
                     <Input
-                      placeholder="e.g., CSC-475"
-                      value={createForm.code}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, code: e.target.value }))}
+                      placeholder="e.g., Room 101, Building A-205"
+                      value={createForm.room_location}
+                      onChange={(e) => setCreateForm(prev => ({ ...prev, room_location: e.target.value }))}
                       className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
                       required
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Credits
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="6"
-                      value={createForm.credits}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, credits: parseInt(e.target.value) || 3 }))}
-                      className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Course Name *
-                  </label>
-                  <Input
-                    placeholder="e.g., Seminar in Computer Science"
-                    value={createForm.name}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
-                    className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white transition-all"
-                    rows={3}
-                    placeholder="Brief description of the course content and objectives..."
-                    value={createForm.description}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, description: e.target.value }))}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Room Location
-                    </label>
-                    <Input
-                      placeholder="e.g., Room 101"
-                      value={createForm.room_location}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, room_location: e.target.value }))}
-                      className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Max Students
+                      Max Students *
                     </label>
                     <Input
                       type="number"
@@ -813,20 +1003,112 @@ function ClassesPageContent() {
                       value={createForm.max_students}
                       onChange={(e) => setCreateForm(prev => ({ ...prev, max_students: parseInt(e.target.value) || 30 }))}
                       className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                      required
                     />
                   </div>
                 </div>
 
+                {/* Schedule Configuration */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Schedule Information
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
+                    Schedule Configuration *
                   </label>
-                  <Input
-                    placeholder="e.g., MWF 10:00-10:50"
-                    value={createForm.schedule_info}
-                    onChange={(e) => setCreateForm(prev => ({ ...prev, schedule_info: e.target.value }))}
-                    className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
-                  />
+                  
+                  {/* Days Selection */}
+                  <div className="mb-4">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">Select Days:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            setCreateForm(prev => ({
+                              ...prev,
+                              days: prev.days.includes(day)
+                                ? prev.days.filter(d => d !== day)
+                                : [...prev.days, day]
+                            }));
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            createForm.days.includes(day)
+                              ? 'bg-emerald-600 text-white shadow-md'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                          }`}
+                        >
+                          {day.substring(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Time Selection */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                        Start Time
+                      </label>
+                      <Input
+                        type="time"
+                        value={createForm.start_time}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, start_time: e.target.value }))}
+                        className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                        End Time
+                      </label>
+                      <Input
+                        type="time"
+                        value={createForm.end_time}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, end_time: e.target.value }))}
+                        className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Schedule Override */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                      Custom Schedule (Optional)
+                    </label>
+                    <Input
+                      placeholder="e.g., MWF 10:00-10:50, TTh 14:00-15:15"
+                      value={createForm.custom_schedule}
+                      onChange={(e) => setCreateForm(prev => ({ ...prev, custom_schedule: e.target.value }))}
+                      className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Leave empty to auto-generate from days and times above
+                    </p>
+                  </div>
+
+                  {/* Schedule Preview */}
+                  {(createForm.days.length > 0 && createForm.start_time && createForm.end_time) || createForm.custom_schedule ? (
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-700">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                        Schedule Preview:
+                      </p>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        {createForm.custom_schedule || 
+                         (createForm.days.length > 0 && createForm.start_time && createForm.end_time ? 
+                          `${createForm.days.map(day => {
+                            switch(day) {
+                              case 'Monday': return 'M';
+                              case 'Tuesday': return 'T';
+                              case 'Wednesday': return 'W';
+                              case 'Thursday': return 'Th';
+                              case 'Friday': return 'F';
+                              case 'Saturday': return 'S';
+                              case 'Sunday': return 'Su';
+                              default: return day.substring(0, 2);
+                            }
+                          }).join('')} ${createForm.start_time}-${createForm.end_time}` : 
+                          'No schedule configured')}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex space-x-4 pt-6 border-t border-slate-200 dark:border-slate-700">
@@ -851,6 +1133,22 @@ function ClassesPageContent() {
           </Card>
         </div>
       )}
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal
+        isOpen={showProfileEdit}
+        onClose={() => setShowProfileEdit(false)}
+        user={user}
+        userProfile={userProfile}
+        onSave={handleProfileSave}
+      />
+
+      {/* Password Change Modal */}
+      <PasswordChangeModal
+        isOpen={showPasswordChange}
+        onClose={() => setShowPasswordChange(false)}
+        onChangePassword={handlePasswordChange}
+      />
     </div>
   );
 }

@@ -4,19 +4,15 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
-import { NotificationPanel } from '@/components/notifications/notification-panel';
 import { 
-  BookOpen, Users, Calendar, QrCode, TrendingUp, Activity,
-  Clock, Bell, Settings, LogOut, Plus, BarChart3, Zap,
-  CheckCircle, XCircle, AlertCircle, ChevronRight, Sparkles,
-  Moon, Sun, Menu, Home, GraduationCap, Shield, Edit,
-  MapPin, Timer, Target, Award, Star, Flame, ChevronDown,
-  Play, Pause, Eye, MoreHorizontal, Filter, Search
+  BookOpen, Users, QrCode, BarChart3, Clock, Bell, Settings, LogOut, 
+  Plus, Play, Eye, Home, GraduationCap, Moon, Sun, MapPin, 
+  CheckCircle, XCircle, AlertCircle, Calendar, Activity, TrendingUp
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import ProfileDropdown from '@/components/profile/profile-dropdown';
+import ProfessorHeader from '@/components/professor/professor-header';
 import ProfileEditModal from '@/components/profile/profile-edit-modal';
 import PasswordChangeModal from '@/components/profile/password-change-modal';
 import { supabase } from '@/lib/supabase';
@@ -25,11 +21,7 @@ interface ProfessorStats {
   totalClasses: number;
   totalStudents: number;
   activeSessions: number;
-  todaySessions: number;
   averageAttendance: number;
-  attendanceStreak: number;
-  thisWeekSessions: number;
-  topPerformingClass: string;
 }
 
 interface ClassData {
@@ -50,19 +42,13 @@ interface ClassData {
   isToday?: boolean;
 }
 
-interface RecentSession {
+interface ActiveSession {
   id: string;
   class_code: string;
   class_name: string;
-  date: string;
-  start_time: string;
-  end_time: string;
   present_count: number;
-  absent_count: number;
-  late_count: number;
   total_students: number;
-  attendance_rate: number;
-  status: 'completed' | 'active' | 'upcoming';
+  qr_code_expires_at: string;
 }
 
 function ProfessorDashboardContent() {
@@ -71,14 +57,10 @@ function ProfessorDashboardContent() {
     totalClasses: 0,
     totalStudents: 0,
     activeSessions: 0,
-    todaySessions: 0,
-    averageAttendance: 0,
-    attendanceStreak: 0,
-    thisWeekSessions: 0,
-    topPerformingClass: ''
+    averageAttendance: 0
   });
   const [myClasses, setMyClasses] = useState<ClassData[]>([]);
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
   const [todayClasses, setTodayClasses] = useState<ClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -443,106 +425,43 @@ function ProfessorDashboardContent() {
       // Fetch user profile
       await fetchUserProfile();
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockStats: ProfessorStats = {
-        totalClasses: 5,
-        totalStudents: 125,
-        activeSessions: 2,
-        todaySessions: 3,
-        averageAttendance: 87.5,
-        attendanceStreak: 8,
-        thisWeekSessions: 12,
-        topPerformingClass: 'CSC-301'
-    };
+      if (!user?.id) {
+        console.error('No user ID available');
+        return;
+      }
 
-    const mockClasses: ClassData[] = [
-      {
-          id: '1',
-        code: 'CSC-475',
-        name: 'Seminar in Computer Science',
-        room_location: 'Room 101',
-        schedule_info: 'MWF 10:00-10:50',
-          enrolled_students: 18,
-        max_students: 25,
-          attendance_rate: 89.5,
-          status: 'upcoming',
-          isToday: true,
-          next_session: {
-            date: new Date().toISOString().split('T')[0],
-            start_time: '10:00',
-            end_time: '10:50'
-          }
-        },
-        {
-          id: '2',
-        code: 'CSC-301',
-        name: 'Data Structures and Algorithms',
-        room_location: 'Room 205',
-        schedule_info: 'MWF 14:00-14:50',
-          enrolled_students: 28,
-        max_students: 30,
-          attendance_rate: 92.8,
-          status: 'active',
-          isToday: true,
-          next_session: {
-            date: new Date().toISOString().split('T')[0],
-            start_time: '14:00',
-            end_time: '14:50'
-          }
-        },
-        {
-          id: '3',
-          code: 'CSC-150',
-          name: 'Introduction to Programming',
-          room_location: 'Room 110',
-          schedule_info: 'TTh 09:00-10:15',
-          enrolled_students: 32,
-          max_students: 35,
-          attendance_rate: 78.2,
-          status: 'upcoming',
-          isToday: true
-        }
-      ];
-
-      const mockRecentSessions: RecentSession[] = [
-        {
-          id: '1',
-          class_code: 'CSC-475',
-          class_name: 'Seminar in Computer Science',
-          date: new Date().toISOString().split('T')[0],
-          start_time: '10:00',
-          end_time: '10:50',
-        present_count: 16,
-          absent_count: 1,
-          late_count: 1,
-          total_students: 18,
-          attendance_rate: 94.4,
-          status: 'completed'
-        },
-        {
-          id: '2',
-          class_code: 'CSC-301',
-          class_name: 'Data Structures',
-          date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-          start_time: '14:00',
-          end_time: '14:50',
-          present_count: 26,
-          absent_count: 1,
-        late_count: 1,
-          total_students: 28,
-          attendance_rate: 96.4,
-          status: 'completed'
-        }
-      ];
+      // Fetch real dashboard data from API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/professors/${user.id}/dashboard`);
       
-      setStats(mockStats);
-      setMyClasses(mockClasses);
-      setRecentSessions(mockRecentSessions);
-      setTodayClasses(mockClasses.filter(c => c.isToday));
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const { stats, classes, activeSessions, todayClasses } = result.data;
+        
+        setStats(stats);
+        setMyClasses(classes);
+        setActiveSessions(activeSessions);
+        setTodayClasses(todayClasses);
+      } else {
+        throw new Error(result.error || 'Failed to fetch dashboard data');
+      }
       
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      // Fallback to empty data on error
+      setStats({
+        totalClasses: 0,
+        totalStudents: 0,
+        activeSessions: 0,
+        averageAttendance: 0
+      });
+      setMyClasses([]);
+      setActiveSessions([]);
+      setTodayClasses([]);
     } finally {
       setIsLoading(false);
     }
@@ -582,122 +501,43 @@ function ProfessorDashboardContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      {/* Top Navigation - Clean & Minimal */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/professor/dashboard" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white">FSAS</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Professor Portal</p>
-              </div>
-            </Link>
+      {/* Header */}
+      <ProfessorHeader
+        currentPage="dashboard"
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
+        onEditProfile={() => setShowProfileEdit(true)}
+        onChangePassword={() => setShowPasswordChange(true)}
+        onUploadAvatar={handleAvatarUpload}
+        onDeleteAvatar={handleAvatarDelete}
+      />
 
-            {/* Navigation */}
-            <nav className="hidden lg:flex items-center space-x-1">
-              <Link href="/professor/dashboard">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900 hover:bg-blue-100 dark:hover:bg-blue-800">
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/professor/classes">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Classes
-                </Button>
-              </Link>
-              <Link href="/professor/sessions">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Sessions
-                </Button>
-              </Link>
-              <Link href="/professor/students">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Users className="w-4 h-4 mr-2" />
-                  Students
-                </Button>
-              </Link>
-              <Link href="/professor/analytics">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  Analytics
-                </Button>
-              </Link>
-            </nav>
-
-            {/* Right Actions */}
-            <div className="flex items-center space-x-3">
-              {/* Time */}
-              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <Clock className="w-4 h-4 text-slate-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-
-              {/* Notifications */}
-              <NotificationPanel />
-
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                {isDarkMode ? (
-                  <Sun className="w-5 h-5 text-amber-500" />
-                ) : (
-                  <Moon className="w-5 h-5 text-slate-600" />
-                )}
-              </button>
-
-              {/* Profile Dropdown */}
-              <ProfileDropdown
-                user={user}
-                userProfile={userProfile}
-                onSignOut={handleSignOut}
-                onEditProfile={() => setShowProfileEdit(true)}
-                onChangePassword={() => setShowPasswordChange(true)}
-                onUploadAvatar={handleAvatarUpload}
-                onDeleteAvatar={handleAvatarDelete}
-              />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
+      {/* Main Content - Simplified */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Welcome Section - Clean & Focused */}
-        <div className="mb-12">
+        {/* Welcome Section */}
+        <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-                Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}{userProfile?.first_name ? `, ${userProfile.first_name}` : ''}! 👋
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                Welcome back{userProfile?.first_name ? `, ${userProfile.first_name}` : ''}! 👋
               </h1>
-              <p className="text-xl text-slate-600 dark:text-slate-400">
+              <p className="text-lg text-slate-600 dark:text-slate-400">
                 {currentTime.toLocaleDateString('en-US', { 
                   weekday: 'long', 
                   month: 'long', 
-                  day: 'numeric',
-                  year: 'numeric'
+                  day: 'numeric'
                 })}
               </p>
             </div>
-            <div className="hidden lg:flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <Link href="/professor/sessions/new">
-                <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200">
+                <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
                   <QrCode className="w-5 h-5 mr-2" />
                   Start Session
                 </Button>
               </Link>
               <Link href="/professor/classes">
-                <Button variant="outline" className="border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-6 py-3 rounded-xl">
+                <Button variant="outline" className="border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-6 py-3 rounded-lg">
                   <Plus className="w-5 h-5 mr-2" />
                   New Class
                 </Button>
@@ -706,56 +546,50 @@ function ProfessorDashboardContent() {
           </div>
         </div>
 
-        {/* Key Metrics - Standardized Heights & Better Spacing */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        {/* Key Metrics - Simplified */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Classes */}
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1">
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
                   Total Classes
                 </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
                   {stats.totalClasses}
                 </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Active this semester
-                </p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center">
                 <BookOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </Card>
 
           {/* Total Students */}
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1">
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
                   Total Students
                 </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
                   {stats.totalStudents}
                 </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Across all classes
-                </p>
               </div>
-              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-xl flex items-center justify-center">
                 <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
           </Card>
 
           {/* Active Sessions */}
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1">
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
-                  Active Now
+                  Active Sessions
                 </p>
-                <div className="flex items-center space-x-2 mb-1">
+                <div className="flex items-center space-x-2">
                   <p className="text-3xl font-bold text-slate-900 dark:text-white">
                     {stats.activeSessions}
                   </p>
@@ -763,47 +597,35 @@ function ProfessorDashboardContent() {
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                   )}
                 </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Sessions running
-                </p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center ml-4">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center">
                 <Activity className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </Card>
 
           {/* Average Attendance */}
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1">
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
                   Avg Attendance
                 </p>
-                <div className="flex items-end space-x-2 mb-1">
-                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
-                    {stats.averageAttendance}%
-                  </p>
-                  <div className="flex items-center text-emerald-600 dark:text-emerald-400">
-                    <TrendingUp className="w-3 h-3" />
-                    <span className="text-xs font-semibold ml-1">+2.3%</span>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Last 30 days
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {stats.averageAttendance}%
                 </p>
               </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center ml-4">
-                <Target className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Main Content Grid - Improved Layout & Alignment */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Today's Classes - PRIMARY CONTENT */}
-          <div className="lg:col-span-2">
+        {/* Main Content - Simplified */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Today's Classes */}
+          <div>
             <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
@@ -813,26 +635,21 @@ function ProfessorDashboardContent() {
                   <div>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Today's Classes</h2>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
-                      {todayClasses.length} classes scheduled for {currentTime.toLocaleDateString('en-US', { weekday: 'long' })}
+                      {todayClasses.length} classes scheduled
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm font-semibold rounded-full">
-                    {currentTime.toLocaleDateString('en-US', { weekday: 'short' })}
-                  </span>
                 </div>
               </div>
 
               {todayClasses.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                    <Calendar className="w-10 h-10 text-slate-400" />
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Calendar className="w-8 h-8 text-slate-400" />
                   </div>
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
                     No classes today
                   </h3>
-                  <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  <p className="text-slate-500 dark:text-slate-400 mb-4">
                     Enjoy your day off! 🌟
                   </p>
                   <Link href="/professor/classes">
@@ -843,11 +660,11 @@ function ProfessorDashboardContent() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {todayClasses.map((classData) => (
                     <div
                       key={classData.id}
-                      className={`p-5 rounded-xl border-2 transition-all duration-200 hover:shadow-lg ${
+                      className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
                         classData.status === 'active' 
                           ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 border-emerald-200 dark:border-emerald-700' 
                           : classData.status === 'upcoming'
@@ -858,15 +675,15 @@ function ProfessorDashboardContent() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3 flex-1">
                           <div className={`w-3 h-3 rounded-full ${
-                            classData.status === 'active' ? 'bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50' :
-                            classData.status === 'upcoming' ? 'bg-blue-500 shadow-lg shadow-blue-500/50' : 'bg-slate-400'
+                            classData.status === 'active' ? 'bg-emerald-500 animate-pulse' :
+                            classData.status === 'upcoming' ? 'bg-blue-500' : 'bg-slate-400'
                           }`}></div>
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
                               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                                 {classData.code}
                               </h3>
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
                                 classData.status === 'active' 
                                   ? 'bg-emerald-500 text-white' 
                                   : classData.status === 'upcoming'
@@ -880,32 +697,28 @@ function ProfessorDashboardContent() {
                               {classData.name}
                             </h4>
                             <div className="flex items-center space-x-4 text-xs text-slate-600 dark:text-slate-400">
-                              <span className="flex items-center font-medium">
+                              <span className="flex items-center">
                                 <Clock className="w-3 h-3 mr-1" />
                                 {classData.schedule_info}
                               </span>
-                              <span className="flex items-center font-medium">
+                              <span className="flex items-center">
                                 <MapPin className="w-3 h-3 mr-1" />
                                 {classData.room_location}
-                              </span>
-                              <span className="flex items-center font-medium">
-                                <Users className="w-3 h-3 mr-1" />
-                                {classData.enrolled_students}/{classData.max_students}
                               </span>
                             </div>
                           </div>
                         </div>
                         
-                        <div className="flex items-center space-x-4 ml-4">
+                        <div className="flex items-center space-x-3">
                           <div className="text-right">
-                            <p className={`text-2xl font-bold ${getAttendanceColor(classData.attendance_rate)}`}>
+                            <p className={`text-xl font-bold ${getAttendanceColor(classData.attendance_rate)}`}>
                               {classData.attendance_rate}%
                             </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Attendance</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Attendance</p>
                           </div>
                           {classData.status === 'upcoming' && (
                             <Link href={`/professor/sessions/new?classId=${classData.id}`}>
-                              <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
+                              <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2 rounded-lg">
                                 <Play className="w-4 h-4 mr-1" />
                                 Start
                               </Button>
@@ -913,7 +726,7 @@ function ProfessorDashboardContent() {
                           )}
                           {classData.status === 'active' && (
                             <Link href={`/professor/sessions/active/${classData.id}`}>
-                              <Button className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
+                              <Button className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg">
                                 <Eye className="w-4 h-4 mr-1" />
                                 View
                               </Button>
@@ -928,165 +741,82 @@ function ProfessorDashboardContent() {
             </Card>
           </div>
 
-          {/* Right Sidebar - Improved Layout & Spacing */}
-          <div className="space-y-6">
-            {/* Performance Metrics */}
-            <Card className="p-5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Award className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Performance</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">This week</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="p-3 bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 rounded-xl border border-emerald-200 dark:border-emerald-700">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center">
-                        <Flame className="w-3 h-3 text-white" />
-                      </div>
-                      <span className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
-                        Attendance Streak
-                      </span>
-                    </div>
-                    <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                      {stats.attendanceStreak}
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">days</p>
-                </div>
-
-                <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-xl border border-blue-200 dark:border-blue-700">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <Calendar className="w-3 h-3 text-white" />
-                      </div>
-                      <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                        Sessions This Week
-                      </span>
-                    </div>
-                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {stats.thisWeekSessions}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-900 dark:to-amber-800 rounded-xl border border-amber-200 dark:border-amber-700">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
-                        <Star className="w-3 h-3 text-white" />
-                      </div>
-                      <span className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                        Top Performing
-                      </span>
-                    </div>
-                    <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                      {stats.topPerformingClass}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Recent Activity */}
-            <Card className="p-5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between mb-4">
+          {/* Active Sessions */}
+          <div>
+            <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl flex items-center justify-center shadow-lg">
-                    <Activity className="w-4 h-4 text-white" />
+                  <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <Activity className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Recent Activity</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Latest sessions</p>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Active Sessions</h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      {activeSessions.length} sessions running
+                    </p>
                   </div>
                 </div>
-                <Link href="/professor/sessions">
-                  <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900">
-                    View All
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
               </div>
 
-              <div className="space-y-3">
-                {recentSessions.slice(0, 3).map((session) => (
-                  <div
-                    key={session.id}
-                    className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors border border-slate-200 dark:border-slate-600"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                        {session.class_code}
-                      </h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                        session.attendance_rate >= 90
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400'
-                          : session.attendance_rate >= 80
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-400'
-                      }`}>
-                        {session.attendance_rate}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600 dark:text-slate-400 font-medium">
-                        {new Date(session.date).toLocaleDateString()}
-                      </span>
-                      <div className="flex items-center space-x-3">
-                        <span className="flex items-center text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          {session.present_count}
+              {activeSessions.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <QrCode className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                    No active sessions
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 mb-4">
+                    Start a session to begin tracking attendance
+                  </p>
+                  <Link href="/professor/sessions/new">
+                    <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
+                      <QrCode className="w-4 h-4 mr-2" />
+                      Start Session
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 rounded-lg border border-emerald-200 dark:border-emerald-700"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                              {session.class_code}
+                            </h3>
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
+                              {session.class_name}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                            {session.present_count}/{session.total_students}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Present</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="text-xs text-slate-600 dark:text-slate-400">
+                          QR expires: {new Date(session.qr_code_expires_at).toLocaleTimeString()}
                         </span>
-                        <span className="flex items-center text-amber-600 dark:text-amber-400">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          {session.late_count}
-                        </span>
-                        <span className="flex items-center text-red-500">
-                          <XCircle className="w-3 h-3 mr-1" />
-                          {session.absent_count}
-                        </span>
+                        <Link href={`/professor/sessions/active/${session.id}`}>
+                          <Button className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg">
+                            <Eye className="w-4 h-4 mr-1" />
+                            View
+                          </Button>
+                        </Link>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Quick Actions */}
-            <Card className="p-5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                <Link href="/professor/sessions/new">
-                  <Button className="w-full justify-start bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-lg shadow-lg">
-                    <QrCode className="w-4 h-4 mr-3" />
-                    Generate QR Code
-                  </Button>
-                </Link>
-                <Link href="/professor/classes">
-                  <Button variant="outline" className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-900 border-slate-300 dark:border-slate-600 rounded-lg">
-                    <Plus className="w-4 h-4 mr-3" />
-                    Create New Class
-                  </Button>
-                </Link>
-                <Link href="/professor/analytics">
-                  <Button variant="outline" className="w-full justify-start hover:bg-purple-50 dark:hover:bg-purple-900 border-slate-300 dark:border-slate-600 rounded-lg">
-                    <BarChart3 className="w-4 h-4 mr-3" />
-                    View Analytics
-                  </Button>
-                </Link>
-                <Link href="/professor/students">
-                  <Button variant="outline" className="w-full justify-start hover:bg-slate-50 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-lg">
-                    <Users className="w-4 h-4 mr-3" />
-                    Manage Students
-                  </Button>
-                </Link>
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </div>
         </div>

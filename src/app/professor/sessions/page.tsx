@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
-import { NotificationPanel } from '@/components/notifications/notification-panel';
 import { 
   Calendar, Clock, Users, QrCode, Play, Pause, Square, 
   MoreHorizontal, Filter, Search, Download, Eye, 
@@ -16,6 +15,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import ProfessorHeader from '@/components/professor/professor-header';
+import ProfileEditModal from '@/components/profile/profile-edit-modal';
+import PasswordChangeModal from '@/components/profile/password-change-modal';
+import { supabase } from '@/lib/supabase';
 
 interface SessionData {
   id: string;
@@ -57,6 +60,9 @@ function SessionsPageContent() {
   const [activeSessions, setActiveSessions] = useState<SessionData[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
 
   useEffect(() => {
     const savedMode = localStorage.getItem('darkMode') === 'true';
@@ -87,6 +93,7 @@ function SessionsPageContent() {
   useEffect(() => {
     fetchSessions();
     fetchClasses();
+    fetchUserProfile();
   }, [user]);
 
   useEffect(() => {
@@ -101,6 +108,301 @@ function SessionsPageContent() {
 
     return () => clearInterval(interval);
   }, []);
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('🔍 Fetching user profile for user ID:', user.id);
+      console.log('🔍 User metadata:', user.user_metadata);
+      
+      const { data, error } = await supabase
+        .from('users' as any)
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        console.log('🔍 Falling back to user metadata');
+        
+        // Create a basic profile from user metadata
+        const fallbackProfile = {
+          first_name: user.user_metadata?.first_name || 'User',
+          last_name: user.user_metadata?.last_name || '',
+          email: user.email || '',
+          role: user.user_metadata?.role || 'professor',
+          phone: user.user_metadata?.phone || '',
+          office_location: user.user_metadata?.office_location || '',
+          title: user.user_metadata?.title || ''
+        };
+        
+        console.log('🔍 Using fallback profile:', fallbackProfile);
+        setUserProfile(fallbackProfile);
+        return;
+      }
+      
+      // Combine database data with auth metadata for complete profile
+      const completeProfile = {
+        ...(data as any || {}),
+        phone: user.user_metadata?.phone || '',
+        office_location: user.user_metadata?.office_location || '',
+        title: user.user_metadata?.title || ''
+      };
+      
+      console.log('✅ User profile fetched:', completeProfile);
+      setUserProfile(completeProfile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const handleProfileSave = async (profileData: any) => {
+    if (!user) return;
+    
+    try {
+      console.log('Attempting to save profile data:', profileData);
+      console.log('User ID:', user.id);
+      
+      // Check if names changed and handle name change tracking
+      const namesChanged = profileData.first_name !== userProfile?.first_name || profileData.last_name !== userProfile?.last_name;
+      
+      if (namesChanged) {
+        console.log('Names changed, checking name change limits...');
+        
+        // Import and use the name change service
+        const { NameChangeService } = await import('@/lib/name-change-service');
+        
+        // Check if user can change their name
+        const nameChangeInfo = await NameChangeService.getNameChangeInfo(user.id);
+        
+        if (!nameChangeInfo.canChange) {
+          throw new Error('Name change limit reached for this month. Please try again next month.');
+        }
+        
+        // Record the name change
+        const nameChangeResult = await NameChangeService.changeName(
+          user.id,
+          userProfile?.first_name || '',
+          userProfile?.last_name || '',
+          profileData.first_name,
+          profileData.last_name,
+          profileData.nameChangeReason || 'Name change via profile edit'
+        );
+        
+        if (!nameChangeResult.success) {
+          throw new Error(nameChangeResult.message);
+        }
+        
+        console.log('Name change recorded successfully:', nameChangeResult);
+      }
+      
+      // Separate data for users table (only basic fields that exist)
+      const usersTableData = {
+        first_name: profileData.first_name,
+        last_name: profileData.last_name,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Update the users table with only existing columns
+      const { error: usersError } = await supabase
+        .from('users' as any)
+        .update(usersTableData)
+        .eq('id', user.id);
+      
+      if (usersError) {
+        console.error('Error updating users table:', usersError);
+        throw new Error(`Failed to save profile: ${usersError.message}`);
+      }
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, ...profileData }));
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      throw error;
+    }
+  };
+
+  const handlePasswordChange = async (currentPassword: string, newPassword: string) => {
+    try {
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Get user profile information for validation
+      const { data: profileData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+
+      const { data: professorData } = await supabase
+        .from('professors')
+        .select('employee_id')
+        .eq('user_id', user.id)
+        .single();
+
+      // Import and use the password change service
+      const { PasswordChangeService } = await import('@/lib/password-change-service');
+      
+      const result = await PasswordChangeService.changePassword(
+        user.id,
+        user.email || '',
+        currentPassword,
+        newPassword,
+        {
+          firstName: profileData?.first_name || user.user_metadata?.first_name,
+          lastName: profileData?.last_name || user.user_metadata?.last_name,
+          employeeId: professorData?.employee_id
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Password change failed');
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!user) {
+      console.error('No user found for avatar upload');
+      throw new Error('User not authenticated');
+    }
+    
+    try {
+      console.log('Starting avatar upload for user:', user.id);
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.');
+      }
+      
+      // Validate file size (5MB limit)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new Error('File size too large. Please upload an image smaller than 5MB.');
+      }
+      
+      // Create a unique filename
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const fileName = `${user.id}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+      
+      console.log('Uploading file to path:', filePath);
+      
+      // Upload file to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+      
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      }
+      
+      console.log('File uploaded successfully:', uploadData);
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      
+      console.log('Public URL generated:', publicUrl);
+      
+      // Update user profile with avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+      
+      console.log('Avatar upload completed successfully');
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      throw error;
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!user) {
+      console.error('No user found for avatar deletion');
+      throw new Error('User not authenticated');
+    }
+    
+    try {
+      console.log('Starting avatar deletion for user:', user.id);
+      
+      // Get current avatar URL to extract file path
+      const currentAvatarUrl = userProfile?.avatar_url;
+      if (!currentAvatarUrl) {
+        throw new Error('No avatar to delete');
+      }
+      
+      // Extract file path from URL
+      const urlParts = currentAvatarUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1];
+      const filePath = `avatars/${fileName}`;
+      
+      console.log('Deleting file from path:', filePath);
+      
+      // Delete file from Supabase Storage
+      const { error: deleteError } = await supabase.storage
+        .from('avatars')
+        .remove([filePath]);
+      
+      if (deleteError) {
+        console.error('Storage deletion error:', deleteError);
+        throw new Error(`Failed to delete file: ${deleteError.message}`);
+      }
+      
+      console.log('File deleted successfully from storage');
+      
+      // Update user profile to remove avatar URL
+      const { data: updateData, error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          avatar_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (updateError) {
+        console.error('Database update error:', updateError);
+        throw new Error(`Failed to update profile: ${updateError.message}`);
+      }
+      
+      console.log('Profile updated successfully:', updateData);
+      
+      // Update local state
+      setUserProfile((prev: any) => ({ ...prev, avatar_url: null }));
+      
+      console.log('Avatar deletion completed successfully');
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      throw error;
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -341,101 +643,16 @@ function SessionsPageContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      {/* Top Navigation - Clean & Minimal */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/professor/dashboard" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900 dark:text-white">FSAS</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Professor Portal</p>
-              </div>
-            </Link>
-
-            {/* Navigation */}
-            <nav className="hidden lg:flex items-center space-x-1">
-              <Link href="/professor/dashboard">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/professor/classes">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Classes
-                </Button>
-              </Link>
-              <Link href="/professor/sessions">
-                <Button variant="ghost" size="sm" className="text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30">
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Sessions
-                </Button>
-              </Link>
-              <Link href="/professor/students">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Users className="w-4 h-4 mr-2" />
-                  Students
-                </Button>
-              </Link>
-              <Link href="/professor/analytics">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  Analytics
-                </Button>
-              </Link>
-            </nav>
-
-            {/* Right Actions */}
-            <div className="flex items-center space-x-3">
-              {/* Time */}
-              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <Clock className="w-4 h-4 text-slate-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-
-              {/* Notifications */}
-              <NotificationPanel />
-
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                {isDarkMode ? (
-                  <Sun className="w-5 h-5 text-amber-500" />
-                ) : (
-                  <Moon className="w-5 h-5 text-slate-600" />
-                )}
-              </button>
-
-              {/* User */}
-              <div className="flex items-center space-x-3">
-                <div className="hidden sm:block text-right">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Prof. {(user as any)?.first_name || 'Professor'}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-32">
-                    {user?.email}
-                  </p>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header */}
+      <ProfessorHeader
+        currentPage="sessions"
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
+        onEditProfile={() => setShowProfileEdit(true)}
+        onChangePassword={() => setShowPasswordChange(true)}
+        onUploadAvatar={handleAvatarUpload}
+        onDeleteAvatar={handleAvatarDelete}
+      />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -826,6 +1043,22 @@ function SessionsPageContent() {
           </div>
         )}
       </main>
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal
+        isOpen={showProfileEdit}
+        onClose={() => setShowProfileEdit(false)}
+        user={user}
+        userProfile={userProfile}
+        onSave={handleProfileSave}
+      />
+
+      {/* Password Change Modal */}
+      <PasswordChangeModal
+        isOpen={showPasswordChange}
+        onClose={() => setShowPasswordChange(false)}
+        onChangePassword={handlePasswordChange}
+      />
     </div>
   );
 }

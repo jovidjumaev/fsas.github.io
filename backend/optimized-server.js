@@ -816,6 +816,292 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // =====================================================
+// COURSES API
+// =====================================================
+
+// Get all available courses
+app.get('/api/courses', async (req, res) => {
+  try {
+    console.log('📚 Fetching available courses');
+    
+    const { data: courses, error } = await supabase
+      .from('classes')
+      .select(`
+        id,
+        code,
+        name,
+        description,
+        credits,
+        departments!inner(name)
+      `)
+      .eq('is_active', true);
+    
+    if (error) {
+      console.error('Error fetching courses:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch courses'
+      });
+    }
+    
+    const formattedCourses = courses.map(course => ({
+      id: course.id,
+      code: course.code,
+      name: course.name,
+      description: course.description,
+      credits: course.credits,
+      department_name: course.departments.name
+    }));
+    
+    console.log('✅ Courses fetched successfully:', formattedCourses.length);
+    res.json({
+      success: true,
+      courses: formattedCourses
+    });
+    
+  } catch (error) {
+    console.error('📚 Courses fetch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch courses'
+    });
+  }
+});
+
+// =====================================================
+// CLASSES API
+// =====================================================
+
+// Create a new class
+app.post('/api/classes', async (req, res) => {
+  try {
+    const { course_id, professor_id, room_location, schedule_info, max_students } = req.body;
+    
+    console.log('📚 Creating new class:', { course_id, professor_id, room_location, schedule_info, max_students });
+    
+    // First, get the course details
+    const { data: course, error: courseError } = await supabase
+      .from('classes')
+      .select('code, name, description, credits, department_id, academic_period_id')
+      .eq('id', course_id)
+      .single();
+    
+    if (courseError || !course) {
+      console.error('Error fetching course:', courseError);
+      return res.status(400).json({
+        success: false,
+        error: 'Course not found'
+      });
+    }
+    
+    // Create the class instance
+    const { data: newClass, error: createError } = await supabase
+      .from('classes')
+      .insert({
+        code: course.code,
+        name: course.name,
+        description: course.description,
+        credits: course.credits,
+        professor_id,
+        department_id: course.department_id,
+        academic_period_id: course.academic_period_id,
+        room_location,
+        schedule_info,
+        max_students,
+        is_active: true
+      })
+      .select()
+      .single();
+    
+    if (createError) {
+      console.error('Error creating class:', createError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create class'
+      });
+    }
+    
+    console.log('✅ Class created successfully:', newClass.id);
+    res.json({
+      success: true,
+      class: newClass
+    });
+    
+  } catch (error) {
+    console.error('📚 Class creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create class'
+    });
+  }
+});
+
+// =====================================================
+// PROFESSOR DASHBOARD API
+// =====================================================
+
+// Get professor dashboard data
+app.get('/api/professors/:professorId/dashboard', async (req, res) => {
+  try {
+    const { professorId } = req.params;
+    
+    console.log('📊 Fetching dashboard data for professor:', professorId);
+    
+    // Get professor's classes
+    const { data: classes, error: classesError } = await supabase
+      .from('classes')
+      .select(`
+        id,
+        code,
+        name,
+        room_location,
+        schedule_info,
+        max_students,
+        is_active,
+        created_at
+      `)
+      .eq('professor_id', professorId)
+      .eq('is_active', true);
+    
+    if (classesError) {
+      console.error('Error fetching classes:', classesError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch classes'
+      });
+    }
+    
+    // Get total students across all classes
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('enrollments')
+      .select(`
+        student_id,
+        class_id,
+        status
+      `)
+      .in('class_id', classes.map(c => c.id))
+      .eq('status', 'active');
+    
+    if (enrollmentsError) {
+      console.error('Error fetching enrollments:', enrollmentsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch enrollments'
+      });
+    }
+    
+    // Get active sessions
+    const { data: activeSessions, error: sessionsError } = await supabase
+      .from('sessions')
+      .select(`
+        id,
+        class_id,
+        date,
+        start_time,
+        end_time,
+        is_active,
+        qr_expires_at
+      `)
+      .in('class_id', classes.map(c => c.id))
+      .eq('is_active', true);
+    
+    if (sessionsError) {
+      console.error('Error fetching sessions:', sessionsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch sessions'
+      });
+    }
+    
+    // Get today's classes
+    const today = new Date().toISOString().split('T')[0];
+    const todayClasses = classes.filter(c => {
+      // Simple check - in real implementation, you'd parse schedule_info
+      return c.schedule_info && c.schedule_info.includes('MWF');
+    });
+    
+    // Calculate stats
+    const totalClasses = classes.length;
+    const totalStudents = new Set(enrollments.map(e => e.student_id)).size;
+    const activeSessionsCount = activeSessions.length;
+    
+    // Calculate average attendance (simplified)
+    const { data: attendanceData, error: attendanceError } = await supabase
+      .from('attendance')
+      .select(`
+        session_id,
+        status
+      `)
+      .in('session_id', activeSessions.map(s => s.id));
+    
+    let averageAttendance = 0;
+    if (!attendanceError && attendanceData.length > 0) {
+      const presentCount = attendanceData.filter(a => a.status === 'present').length;
+      averageAttendance = Math.round((presentCount / attendanceData.length) * 100);
+    }
+    
+    // Format classes with enrollment counts
+    const classesWithStats = classes.map(cls => {
+      const classEnrollments = enrollments.filter(e => e.class_id === cls.id);
+      const classSessions = activeSessions.filter(s => s.class_id === cls.id);
+      
+      return {
+        id: cls.id,
+        code: cls.code,
+        name: cls.name,
+        room_location: cls.room_location,
+        schedule_info: cls.schedule_info,
+        enrolled_students: classEnrollments.length,
+        max_students: cls.max_students,
+        attendance_rate: 85, // Mock for now
+        status: classSessions.length > 0 ? 'active' : 'upcoming',
+        isToday: todayClasses.some(tc => tc.id === cls.id)
+      };
+    });
+    
+    // Format active sessions
+    const formattedActiveSessions = activeSessions.map(session => {
+      const classData = classes.find(c => c.id === session.class_id);
+      const sessionEnrollments = enrollments.filter(e => e.class_id === session.class_id);
+      
+      return {
+        id: session.id,
+        class_code: classData?.code || 'Unknown',
+        class_name: classData?.name || 'Unknown Class',
+        present_count: 0, // Would need to query attendance table
+        total_students: sessionEnrollments.length,
+        qr_code_expires_at: session.qr_expires_at
+      };
+    });
+    
+    const dashboardData = {
+      stats: {
+        totalClasses,
+        totalStudents,
+        activeSessions: activeSessionsCount,
+        averageAttendance
+      },
+      classes: classesWithStats,
+      activeSessions: formattedActiveSessions,
+      todayClasses: classesWithStats.filter(c => c.isToday)
+    };
+    
+    console.log('✅ Dashboard data fetched successfully');
+    res.json({
+      success: true,
+      data: dashboardData
+    });
+    
+  } catch (error) {
+    console.error('❌ Dashboard data error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch dashboard data'
+    });
+  }
+});
+
+// =====================================================
 // SOCKET.IO REAL-TIME UPDATES
 // =====================================================
 
