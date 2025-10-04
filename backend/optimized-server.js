@@ -9,6 +9,9 @@ const QRCode = require('qrcode');
 const crypto = require('crypto');
 require('dotenv').config({ path: '.env.local' });
 
+// Import the new class management API
+const classManagementAPI = require('./final-class-management-api.js');
+
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
@@ -98,6 +101,11 @@ app.get('/api/health', (req, res) => {
     features: ['qr-generation', 'attendance-tracking', 'real-time-updates', 'role-based-access', 'enrollment-management']
   });
 });
+
+// =====================================================
+// NEW OPTIMIZED CLASS MANAGEMENT API
+// =====================================================
+app.use('/', classManagementAPI);
 
 // =====================================================
 // USER MANAGEMENT ENDPOINTS
@@ -313,7 +321,7 @@ app.get('/api/professors/:professorId/classes', async (req, res) => {
   try {
     const { professorId } = req.params;
     
-    const { data, error } = await supabase
+    const { data: classes, error } = await supabase
       .from('classes')
       .select(`
         *,
@@ -325,10 +333,41 @@ app.get('/api/professors/:professorId/classes', async (req, res) => {
     
     if (error) throw error;
     
+    // Get enrollment counts for each class
+    const classesWithEnrollments = await Promise.all(
+      classes.map(async (classItem) => {
+        const { data: enrollments, error: enrollmentError } = await supabase
+          .from('enrollments')
+          .select('id')
+          .eq('class_id', classItem.id)
+          .eq('status', 'active');
+        
+        if (enrollmentError) {
+          console.error('Error fetching enrollments for class', classItem.id, enrollmentError);
+          return {
+            ...classItem,
+            enrolled_students: 0,
+            capacity_percentage: 0
+          };
+        }
+        
+        const enrolledCount = enrollments.length;
+        const capacityPercentage = classItem.max_students > 0 
+          ? Math.round((enrolledCount / classItem.max_students) * 100) 
+          : 0;
+        
+        return {
+          ...classItem,
+          enrolled_students: enrolledCount,
+          capacity_percentage: capacityPercentage
+        };
+      })
+    );
+    
     res.json({
       success: true,
-      data,
-      count: data.length
+      data: classesWithEnrollments,
+      count: classesWithEnrollments.length
     });
   } catch (error) {
     res.status(500).json({
@@ -875,9 +914,9 @@ app.get('/api/courses', async (req, res) => {
 // Create a new class
 app.post('/api/classes', async (req, res) => {
   try {
-    const { course_id, professor_id, room_location, schedule_info, max_students } = req.body;
+    const { course_id, professor_id, academic_period_id, room_location, schedule_info, max_students } = req.body;
     
-    console.log('📚 Creating new class:', { course_id, professor_id, room_location, schedule_info, max_students });
+    console.log('📚 Creating new class:', { course_id, professor_id, academic_period_id, room_location, schedule_info, max_students });
     
     // First, get the course details
     const { data: course, error: courseError } = await supabase
@@ -904,7 +943,7 @@ app.post('/api/classes', async (req, res) => {
         credits: course.credits,
         professor_id,
         department_id: course.department_id,
-        academic_period_id: course.academic_period_id,
+        academic_period_id: academic_period_id,
         room_location,
         schedule_info,
         max_students,
@@ -947,39 +986,47 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
     
     console.log('📊 Fetching dashboard data for professor:', professorId);
     
-    // Get professor's classes
-    const { data: classes, error: classesError } = await supabase
-      .from('classes')
+    // Get professor's class instances (using new schema)
+    const { data: classInstances, error: classInstancesError } = await supabase
+      .from('class_instances')
       .select(`
         id,
-        code,
-        name,
-        room_location,
-        schedule_info,
+        class_code,
+        professor_id,
+        academic_period_id,
+        course_id,
+        days_of_week,
+        start_time,
+        end_time,
+        first_class_date,
+        last_class_date,
         max_students,
+        current_enrollment,
         is_active,
-        created_at
+        created_at,
+        courses(code, name, description, credits),
+        academic_periods(name, year, semester)
       `)
       .eq('professor_id', professorId)
       .eq('is_active', true);
     
-    if (classesError) {
-      console.error('Error fetching classes:', classesError);
+    if (classInstancesError) {
+      console.error('Error fetching class instances:', classInstancesError);
       return res.status(500).json({
         success: false,
-        error: 'Failed to fetch classes'
+        error: 'Failed to fetch class instances'
       });
     }
     
-    // Get total students across all classes
+    // Get total students across all class instances
     const { data: enrollments, error: enrollmentsError } = await supabase
       .from('enrollments')
       .select(`
         student_id,
-        class_id,
+        class_instance_id,
         status
       `)
-      .in('class_id', classes.map(c => c.id))
+      .in('class_instance_id', classInstances.map(c => c.id))
       .eq('status', 'active');
     
     if (enrollmentsError) {
@@ -992,17 +1039,17 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
     
     // Get active sessions
     const { data: activeSessions, error: sessionsError } = await supabase
-      .from('sessions')
+      .from('class_sessions')
       .select(`
         id,
-        class_id,
+        class_instance_id,
         date,
         start_time,
         end_time,
         is_active,
         qr_expires_at
       `)
-      .in('class_id', classes.map(c => c.id))
+      .in('class_instance_id', classInstances.map(c => c.id))
       .eq('is_active', true);
     
     if (sessionsError) {
@@ -1013,21 +1060,46 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
       });
     }
     
+    // Helper function to check if a class meets on a specific day
+    const isClassToday = (classInstance) => {
+      const today = new Date();
+      const todayDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const todayDate = today.toISOString().split('T')[0];
+      
+      // Check if today is within the class period
+      const firstClassDate = new Date(classInstance.first_class_date);
+      const lastClassDate = new Date(classInstance.last_class_date);
+      
+      if (today < firstClassDate || today > lastClassDate) {
+        return false;
+      }
+      
+      // Check if today's day of week matches the class schedule
+      const daysOfWeek = classInstance.days_of_week || [];
+      const dayMapping = {
+        'Monday': 1,
+        'Tuesday': 2,
+        'Wednesday': 3,
+        'Thursday': 4,
+        'Friday': 5,
+        'Saturday': 6,
+        'Sunday': 0
+      };
+      
+      return daysOfWeek.some(day => dayMapping[day] === todayDayOfWeek);
+    };
+    
     // Get today's classes
-    const today = new Date().toISOString().split('T')[0];
-    const todayClasses = classes.filter(c => {
-      // Simple check - in real implementation, you'd parse schedule_info
-      return c.schedule_info && c.schedule_info.includes('MWF');
-    });
+    const todayClasses = classInstances.filter(isClassToday);
     
     // Calculate stats
-    const totalClasses = classes.length;
+    const totalClasses = classInstances.length;
     const totalStudents = new Set(enrollments.map(e => e.student_id)).size;
     const activeSessionsCount = activeSessions.length;
     
     // Calculate average attendance (simplified)
     const { data: attendanceData, error: attendanceError } = await supabase
-      .from('attendance')
+      .from('attendance_records')
       .select(`
         session_id,
         status
@@ -1040,34 +1112,40 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
       averageAttendance = Math.round((presentCount / attendanceData.length) * 100);
     }
     
-    // Format classes with enrollment counts
-    const classesWithStats = classes.map(cls => {
-      const classEnrollments = enrollments.filter(e => e.class_id === cls.id);
-      const classSessions = activeSessions.filter(s => s.class_id === cls.id);
+    // Format class instances with stats
+    const classesWithStats = classInstances.map(instance => {
+      const classEnrollments = enrollments.filter(e => e.class_instance_id === instance.id);
+      const classSessions = activeSessions.filter(s => s.class_instance_id === instance.id);
+      const isToday = isClassToday(instance);
       
       return {
-        id: cls.id,
-        code: cls.code,
-        name: cls.name,
-        room_location: cls.room_location,
-        schedule_info: cls.schedule_info,
-        enrolled_students: classEnrollments.length,
-        max_students: cls.max_students,
+        id: instance.id,
+        code: instance.courses?.code || 'Unknown',
+        name: instance.courses?.name || 'Unknown Class',
+        description: instance.courses?.description || '',
+        credits: instance.courses?.credits || 0,
+        class_code: instance.class_code,
+        days_of_week: instance.days_of_week,
+        start_time: instance.start_time,
+        end_time: instance.end_time,
+        enrolled_students: instance.current_enrollment || 0,
+        max_students: instance.max_students,
         attendance_rate: 85, // Mock for now
         status: classSessions.length > 0 ? 'active' : 'upcoming',
-        isToday: todayClasses.some(tc => tc.id === cls.id)
+        isToday: isToday,
+        academic_period: instance.academic_periods?.name || 'Unknown Period'
       };
     });
     
     // Format active sessions
     const formattedActiveSessions = activeSessions.map(session => {
-      const classData = classes.find(c => c.id === session.class_id);
-      const sessionEnrollments = enrollments.filter(e => e.class_id === session.class_id);
+      const classData = classInstances.find(c => c.id === session.class_instance_id);
+      const sessionEnrollments = enrollments.filter(e => e.class_instance_id === session.class_instance_id);
       
       return {
         id: session.id,
-        class_code: classData?.code || 'Unknown',
-        class_name: classData?.name || 'Unknown Class',
+        class_code: classData?.courses?.code || 'Unknown',
+        class_name: classData?.courses?.name || 'Unknown Class',
         present_count: 0, // Would need to query attendance table
         total_students: sessionEnrollments.length,
         qr_code_expires_at: session.qr_expires_at
@@ -1127,6 +1205,591 @@ io.on('connection', (socket) => {
 function broadcastAttendanceUpdate(sessionId, attendanceData) {
   io.to(`session-${sessionId}`).emit('attendance-update', attendanceData);
 }
+
+// =====================================================
+// CLASS MANAGEMENT ENDPOINTS
+// =====================================================
+
+// Get individual class details
+app.get('/api/classes/:classId', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select(`
+        *,
+        departments (
+          name,
+          code
+        ),
+        academic_periods (
+          name,
+          year,
+          semester
+        )
+      `)
+      .eq('id', classId)
+      .single();
+    
+    if (classError) {
+      console.error('Error fetching class:', classError);
+      return res.status(404).json({
+        success: false,
+        error: 'Class not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      class: classData
+    });
+  } catch (error) {
+    console.error('Error in /api/classes/:classId:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Get enrolled students for a class
+app.get('/api/classes/:classId/students', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    const { data: enrollments, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select(`
+        *,
+        students (
+          id,
+          student_id,
+          enrollment_year,
+          major,
+          users (
+            first_name,
+            last_name,
+            email,
+            phone
+          )
+        )
+      `)
+      .eq('class_id', classId)
+      .eq('status', 'active');
+    
+    if (enrollmentError) {
+      console.error('Error fetching enrolled students:', enrollmentError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch enrolled students'
+      });
+    }
+    
+    // Calculate attendance rate for each student
+    const studentsWithAttendance = await Promise.all(
+      enrollments.map(async (enrollment) => {
+        const { data: attendanceData, error: attendanceError } = await supabase
+          .from('attendance')
+          .select(`
+            status,
+            sessions (
+              class_id
+            )
+          `)
+          .eq('student_id', enrollment.student_id)
+          .eq('sessions.class_id', classId);
+        
+        let attendanceRate = 0;
+        if (!attendanceError && attendanceData.length > 0) {
+          const presentCount = attendanceData.filter(a => a.status === 'present').length;
+          attendanceRate = Math.round((presentCount / attendanceData.length) * 100);
+        }
+        
+        return {
+          ...enrollment.students,
+          enrollment_date: enrollment.created_at,
+          attendance_rate: attendanceRate
+        };
+      })
+    );
+    
+    res.json({
+      success: true,
+      students: studentsWithAttendance
+    });
+  } catch (error) {
+    console.error('Error in /api/classes/:classId/students:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Update current academic period based on real time
+app.post('/api/academic-periods/update-current', async (req, res) => {
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-12
+    
+    console.log(`🕐 Updating current period for real date: ${year}-${month.toString().padStart(2, '0')}`);
+    
+    // Determine current period based on real date
+    let currentPeriod;
+    if (month >= 8 && month <= 12) {
+      currentPeriod = { name: `Fall ${year}`, year, semester: 'fall' };
+    } else if (month >= 1 && month <= 5) {
+      currentPeriod = { name: `Spring ${year}`, year, semester: 'spring' };
+    } else if (month === 6) {
+      currentPeriod = { name: `Summer I ${year}`, year, semester: 'summer_i' };
+    } else if (month === 7) {
+      currentPeriod = { name: `Summer II ${year}`, year, semester: 'summer_ii' };
+    } else {
+      currentPeriod = { name: `Fall ${year}`, year, semester: 'fall' };
+    }
+    
+    // Set all periods to not current
+    const { error: updateError } = await supabase
+      .from('academic_periods')
+      .update({ is_current: false })
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    
+    if (updateError) {
+      console.error('Error updating periods:', updateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update periods'
+      });
+    }
+    
+    // Find or create the current period
+    const { data: existingPeriod, error: findError } = await supabase
+      .from('academic_periods')
+      .select('*')
+      .eq('name', currentPeriod.name)
+      .eq('year', currentPeriod.year)
+      .eq('semester', currentPeriod.semester)
+      .single();
+    
+    if (findError && findError.code !== 'PGRST116') {
+      console.error('Error finding current period:', findError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to find current period'
+      });
+    }
+    
+    if (existingPeriod) {
+      // Update existing period to be current
+      const { data, error } = await supabase
+        .from('academic_periods')
+        .update({ is_current: true })
+        .eq('id', existingPeriod.id)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error updating current period:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to update current period'
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: `Updated current period to ${data.name}`,
+        currentPeriod: data
+      });
+    } else {
+      // Create new current period
+      const { data, error } = await supabase
+        .from('academic_periods')
+        .insert({
+          name: currentPeriod.name,
+          year: currentPeriod.year,
+          semester: currentPeriod.semester,
+          start_date: `${currentPeriod.year}-08-15`,
+          end_date: `${currentPeriod.year}-12-15`,
+          is_current: true
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error creating current period:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to create current period'
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: `Created current period ${data.name}`,
+        currentPeriod: data
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error in /api/academic-periods/update-current:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Get all academic periods
+app.get('/api/academic-periods', async (req, res) => {
+  try {
+    const { data: periods, error } = await supabase
+      .from('academic_periods')
+      .select('*')
+      .order('year', { ascending: false })
+      .order('semester', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching academic periods:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch academic periods'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: periods
+    });
+  } catch (error) {
+    console.error('Error in /api/academic-periods:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Get all available students
+app.get('/api/students', async (req, res) => {
+  try {
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select(`
+        id,
+        student_id,
+        first_name,
+        last_name,
+        email,
+        major,
+        enrollment_year
+      `)
+      .eq('is_active', true);
+    
+    if (studentsError) {
+      console.error('Error fetching students:', studentsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch students'
+      });
+    }
+    
+    res.json({
+      success: true,
+      students: students
+    });
+  } catch (error) {
+    console.error('Error in /api/students:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Create a new student
+app.post('/api/students', async (req, res) => {
+  try {
+    const { student_id, first_name, last_name, email, major, enrollment_year } = req.body;
+    
+    if (!student_id || !first_name || !last_name || !email || !major || !enrollment_year) {
+      return res.status(400).json({
+        success: false,
+        error: 'All fields are required'
+      });
+    }
+    
+    // Check if student already exists
+    const { data: existingStudent, error: checkError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('student_id', student_id)
+      .single();
+    
+    if (existingStudent) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student with this ID already exists'
+      });
+    }
+    
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .insert({
+        student_id,
+        first_name,
+        last_name,
+        email,
+        major,
+        enrollment_year,
+        is_active: true,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (studentError) {
+      console.error('Error creating student:', studentError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create student'
+      });
+    }
+    
+    res.json({
+      success: true,
+      student: student
+    });
+  } catch (error) {
+    console.error('Error in /api/students POST:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Enroll students in a class
+app.post('/api/classes/:classId/enroll', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { student_ids } = req.body;
+    
+    if (!student_ids || !Array.isArray(student_ids)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student IDs array is required'
+      });
+    }
+    
+    // Check if class exists and get max_students
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select('max_students')
+      .eq('id', classId)
+      .single();
+    
+    if (classError) {
+      return res.status(404).json({
+        success: false,
+        error: 'Class not found'
+      });
+    }
+    
+    // Check current enrollment count
+    const { count: currentEnrollmentCount, error: countError } = await supabase
+      .from('enrollments')
+      .select('*', { count: 'exact', head: true })
+      .eq('class_id', classId)
+      .eq('status', 'active');
+    
+    if (countError) {
+      console.error('Error checking enrollment count:', countError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to check enrollment count'
+      });
+    }
+    
+    if (currentEnrollmentCount + student_ids.length > classData.max_students) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot enroll ${student_ids.length} students. Class capacity is ${classData.max_students} and currently has ${currentEnrollmentCount} students.`
+      });
+    }
+    
+    // Get the current academic period
+    const { data: periods, error: periodError } = await supabase
+      .from('academic_periods')
+      .select('id')
+      .eq('is_current', true);
+    
+    if (periodError) {
+      console.error('Error finding current academic period:', periodError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to find academic period'
+      });
+    }
+    
+    const currentPeriod = periods && periods.length > 0 ? periods[0] : null;
+    
+    if (!currentPeriod) {
+      console.error('No current academic period found');
+      return res.status(500).json({
+        success: false,
+        error: 'No current academic period found'
+      });
+    }
+
+    // Get professor ID from the class
+    const { data: classInfo, error: classInfoError } = await supabase
+      .from('classes')
+      .select('professor_id')
+      .eq('id', classId)
+      .single();
+    
+    if (classInfoError) {
+      console.error('Error getting class info:', classInfoError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to get class information'
+      });
+    }
+
+    // Handle enrollments - check for existing dropped enrollments first
+    const enrollmentResults = [];
+    
+    for (const studentId of student_ids) {
+      // Check if student already has an enrollment (active or dropped)
+      const { data: existingEnrollment, error: checkError } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('class_id', classId)
+        .eq('student_id', studentId)
+        .eq('academic_period_id', currentPeriod.id)
+        .single();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing enrollment:', checkError);
+        continue;
+      }
+      
+      if (existingEnrollment) {
+        // Update existing enrollment to active
+        const { data: updatedEnrollment, error: updateError } = await supabase
+          .from('enrollments')
+          .update({
+            status: 'active',
+            enrolled_by: classInfo.professor_id
+          })
+          .eq('id', existingEnrollment.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error updating enrollment:', updateError);
+          continue;
+        }
+        
+        enrollmentResults.push(updatedEnrollment);
+      } else {
+        // Create new enrollment
+        const { data: newEnrollment, error: insertError } = await supabase
+          .from('enrollments')
+          .insert({
+            class_id: classId,
+            student_id: studentId,
+            academic_period_id: currentPeriod.id,
+            enrolled_by: classInfo.professor_id,
+            status: 'active',
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (insertError) {
+          console.error('Error creating enrollment:', insertError);
+          continue;
+        }
+        
+        enrollmentResults.push(newEnrollment);
+      }
+    }
+    
+    if (enrollmentResults.length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to enroll any students'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Successfully enrolled ${enrollmentResults.length} students`,
+      enrollments: enrollmentResults
+    });
+  } catch (error) {
+    console.error('Error in /api/classes/:classId/enroll:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Unenroll student from a class
+app.post('/api/classes/:classId/unenroll', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { student_id } = req.body;
+    
+    if (!student_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student ID is required'
+      });
+    }
+    
+    const { data, error } = await supabase
+      .from('enrollments')
+      .update({ 
+        status: 'dropped'
+      })
+      .eq('class_id', classId)
+      .eq('student_id', student_id)
+      .eq('status', 'active')
+      .select();
+    
+    if (error) {
+      console.error('Error unenrolling student:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to unenroll student'
+      });
+    }
+    
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Enrollment not found or already inactive'
+      });
+    }
+    res.json({
+      success: true,
+      message: 'Student successfully unenrolled',
+      data: data[0]
+    });
+  } catch (error) {
+    console.error('❌ Error in /api/classes/:classId/unenroll:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error: ' + error.message
+    });
+  }
+});
 
 // =====================================================
 // START SERVER

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { 
@@ -10,7 +11,7 @@ import {
   Clock, MapPin, GraduationCap, TrendingUp, AlertCircle,
   ChevronDown, X, Settings, Star, Award, Target, Activity,
   Home, Menu, Moon, Sun, Sparkles, Zap, Shield, Eye,
-  Play, Pause, ChevronRight, LogOut
+  Play, Pause, ChevronRight, LogOut, Pin, PinOff
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,20 +24,41 @@ import { supabase } from '@/lib/supabase';
 
 interface ClassData {
   id: string;
-  code: string;
-  name: string;
-  description?: string;
+  course_id: string;
+  professor_id: string;
+  academic_period_id: string;
+  section_number: number;
+  class_code: string;
+  days_of_week: string[];
+  start_time: string;
+  end_time: string;
+  first_class_date: string;
+  last_class_date: string;
   room_location: string;
-  schedule_info: string;
   max_students: number;
-  enrolled_students: number;
-  credits: number;
-  academic_period: string;
-  year: number;
-  semester: string;
-  department_name: string;
+  current_enrollment: number;
+  capacity_percentage: number;
   is_active: boolean;
+  status: 'active' | 'inactive' | 'completed';
+  is_pinned: boolean;
+  enrollment_deadline: string;
   created_at: string;
+  updated_at: string;
+  courses: {
+    code: string;
+    name: string;
+    description: string;
+    credits: number;
+    departments: {
+      code: string;
+      name: string;
+    };
+  };
+  academic_periods: {
+    name: string;
+    year: number;
+    semester: string;
+  };
   next_session?: {
     date: string;
     start_time: string;
@@ -56,23 +78,35 @@ interface AvailableCourse {
   department_name: string;
 }
 
+interface AcademicPeriod {
+  id: string;
+  name: string;
+  year: number;
+  semester: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+}
+
 interface CreateClassForm {
   selected_course_id: string;
+  academic_period_id: string;
   room_location: string;
-  schedule_info: string;
   max_students: number;
   // Schedule details
-  days: string[];
+  days_of_week: string[];
   start_time: string;
   end_time: string;
-  // Additional options
-  custom_schedule: string;
+  first_class_date: string;
+  last_class_date: string;
 }
 
 function ClassesPageContent() {
   const { user, signOut } = useAuth();
+  const searchParams = useSearchParams();
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [availableCourses, setAvailableCourses] = useState<AvailableCourse[]>([]);
+  const [academicPeriods, setAcademicPeriods] = useState<AcademicPeriod[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<ClassData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,16 +119,28 @@ function ClassesPageContent() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    details?: string;
+    type: 'danger' | 'warning' | 'info';
+    confirmText: string;
+    cancelText: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const [createForm, setCreateForm] = useState<CreateClassForm>({
     selected_course_id: '',
+    academic_period_id: '',
     room_location: '',
-    schedule_info: '',
     max_students: 30,
-    days: [],
+    days_of_week: [],
     start_time: '',
     end_time: '',
-    custom_schedule: ''
+    first_class_date: '',
+    last_class_date: ''
   });
 
   useEffect(() => {
@@ -104,6 +150,18 @@ function ClassesPageContent() {
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  // Check for URL parameter to open create form
+  useEffect(() => {
+    const createParam = searchParams.get('create');
+    if (createParam === 'true') {
+      setShowCreateForm(true);
+      // Clean up the URL parameter
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams]);
 
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
@@ -126,6 +184,7 @@ function ClassesPageContent() {
   useEffect(() => {
     fetchClasses();
     fetchAvailableCourses();
+    fetchAcademicPeriods();
     fetchUserProfile();
   }, [user]);
 
@@ -133,18 +192,69 @@ function ClassesPageContent() {
     filterAndSortClasses();
   }, [classes, searchQuery, sortBy, filterBy]);
 
+  // Listen for class status changes from manage page
+  useEffect(() => {
+    const handleClassStatusChange = () => {
+      fetchClasses();
+    };
+
+    window.addEventListener('classStatusChanged', handleClassStatusChange);
+    
+    return () => {
+      window.removeEventListener('classStatusChanged', handleClassStatusChange);
+    };
+  }, []);
+
+  // Close dropdown menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openMenuId && !(event.target as Element).closest('.dropdown-menu')) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openMenuId]);
+
+
+  // Refresh data when page becomes visible (e.g., when returning from class management)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        fetchClasses();
+      }
+    };
+
+    const handleFocus = () => {
+      if (user) {
+        fetchClasses();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user]);
+
   const fetchClasses = async () => {
     setIsLoading(true);
     try {
       if (!user?.id) return;
       
-      const response = await fetch(`http://localhost:3001/api/professors/${user.id}/classes`);
+      const response = await fetch(`http://localhost:3001/api/professors/${user.id}/class-instances`);
       if (!response.ok) {
         throw new Error('Failed to fetch classes');
       }
       
       const data = await response.json();
-      setClasses(data.classes || []);
+      setClasses(data.data || []);
     } catch (error) {
       console.error('Error fetching classes:', error);
       // Fallback to empty array if API fails
@@ -162,10 +272,31 @@ function ClassesPageContent() {
       }
       
       const data = await response.json();
-      setAvailableCourses(data.courses || []);
+      setAvailableCourses(data.data || []);
     } catch (error) {
       console.error('Error fetching available courses:', error);
       setAvailableCourses([]);
+    }
+  };
+
+  const fetchAcademicPeriods = async () => {
+    try {
+      // First update the current period based on real time
+      await fetch('http://localhost:3001/api/academic-periods/update-current', {
+        method: 'POST'
+      });
+      
+      // Then fetch the updated periods
+      const response = await fetch('http://localhost:3001/api/academic-periods');
+      if (!response.ok) {
+        throw new Error('Failed to fetch academic periods');
+      }
+      
+      const data = await response.json();
+      setAcademicPeriods(data.data || []);
+    } catch (error) {
+      console.error('Error fetching academic periods:', error);
+      setAcademicPeriods([]);
     }
   };
 
@@ -175,9 +306,10 @@ function ClassesPageContent() {
     // Apply search filter
     if (searchQuery) {
       filtered = filtered.filter(cls =>
-        cls.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.description?.toLowerCase().includes(searchQuery.toLowerCase())
+        cls.courses?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.courses?.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.courses?.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.class_code.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -186,9 +318,9 @@ function ClassesPageContent() {
       filtered = filtered.filter(cls => {
         switch (filterBy) {
           case 'active':
-            return cls.is_active;
+            return cls.status === 'active';
           case 'inactive':
-            return !cls.is_active;
+            return cls.status === 'inactive';
           case 'high_performance':
             return (cls.attendance_rate || 0) >= 85;
           case 'needs_attention':
@@ -201,13 +333,17 @@ function ClassesPageContent() {
 
     // Apply sorting
     filtered.sort((a, b) => {
+      // Always show pinned classes first
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      
       switch (sortBy) {
         case 'name':
-          return a.name.localeCompare(b.name);
+          return (a.courses?.name || '').localeCompare(b.courses?.name || '');
         case 'code':
-          return a.code.localeCompare(b.code);
+          return (a.courses?.code || '').localeCompare(b.courses?.code || '');
         case 'enrollment':
-          return b.enrolled_students - a.enrolled_students;
+          return (b.current_enrollment || 0) - (a.current_enrollment || 0);
         case 'attendance':
           return (b.attendance_rate || 0) - (a.attendance_rate || 0);
         case 'created':
@@ -225,33 +361,28 @@ function ClassesPageContent() {
     try {
       if (!user?.id) return;
       
-      // Generate schedule info from days and times
-      let scheduleInfo = createForm.custom_schedule;
-      if (!scheduleInfo && createForm.days.length > 0 && createForm.start_time && createForm.end_time) {
-        const dayAbbrevs = createForm.days.map(day => {
-          switch(day) {
-            case 'Monday': return 'M';
-            case 'Tuesday': return 'T';
-            case 'Wednesday': return 'W';
-            case 'Thursday': return 'Th';
-            case 'Friday': return 'F';
-            case 'Saturday': return 'S';
-            case 'Sunday': return 'Su';
-            default: return day.substring(0, 2);
-          }
-        });
-        scheduleInfo = `${dayAbbrevs.join('')} ${createForm.start_time}-${createForm.end_time}`;
+      // Validate required fields
+      if (!createForm.selected_course_id || !createForm.academic_period_id || 
+          !createForm.days_of_week.length || !createForm.start_time || 
+          !createForm.end_time || !createForm.first_class_date || !createForm.last_class_date) {
+        alert('Please fill in all required fields');
+        return;
       }
       
       const classData = {
         course_id: createForm.selected_course_id,
         professor_id: user.id,
+        academic_period_id: createForm.academic_period_id,
+        days_of_week: createForm.days_of_week,
+        start_time: createForm.start_time,
+        end_time: createForm.end_time,
+        first_class_date: createForm.first_class_date,
+        last_class_date: createForm.last_class_date,
         room_location: createForm.room_location,
-        schedule_info: scheduleInfo,
         max_students: createForm.max_students
       };
       
-      const response = await fetch('http://localhost:3001/api/classes', {
+      const response = await fetch('http://localhost:3001/api/class-instances', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -260,23 +391,68 @@ function ClassesPageContent() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to create class');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create class');
       }
       
+      const result = await response.json();
+      console.log('Class created successfully:', result);
+      
+      // Reset form
       setCreateForm({
         selected_course_id: '',
+        academic_period_id: '',
         room_location: '',
-        schedule_info: '',
         max_students: 30,
-        days: [],
+        days_of_week: [],
         start_time: '',
         end_time: '',
-        custom_schedule: ''
+        first_class_date: '',
+        last_class_date: ''
       });
       setShowCreateForm(false);
       await fetchClasses();
     } catch (error) {
       console.error('Error creating class:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Error creating class: ${errorMessage}`);
+    }
+  };
+
+  // Function to refresh classes data (can be called from child components)
+  const refreshClasses = async () => {
+    await fetchClasses();
+  };
+
+  // Function to toggle pin status
+  const togglePin = async (classId: string) => {
+    try {
+      if (!user?.id) return;
+      
+      const response = await fetch(`http://localhost:3001/api/class-instances/${classId}/pin`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          professor_id: user.id
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to toggle pin');
+      }
+      
+      const result = await response.json();
+      console.log('Pin toggled:', result);
+      
+      // Refresh classes to show updated pin status
+      await fetchClasses();
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Error toggling pin: ${errorMessage}`);
     }
   };
 
@@ -617,6 +793,79 @@ function ClassesPageContent() {
     await signOut();
   };
 
+  const showConfirmationModal = (config: {
+    title: string;
+    message: string;
+    details?: string;
+    type: 'danger' | 'warning' | 'info';
+    confirmText: string;
+    cancelText: string;
+    onConfirm: () => void;
+  }) => {
+    setConfirmationModal({
+      isOpen: true,
+      ...config
+    });
+  };
+
+  const closeConfirmationModal = () => {
+    setConfirmationModal(null);
+  };
+
+  const showNotification = (type: 'success' | 'error' | 'info', message: string, details?: string) => {
+    // For now, we'll use alert as a fallback
+    // In a real implementation, you'd want to add a notification state and UI
+    if (type === 'success') {
+      alert(`✅ ${message}${details ? '\n\n' + details : ''}`);
+    } else if (type === 'error') {
+      alert(`❌ ${message}${details ? '\n\n' + details : ''}`);
+    } else {
+      alert(`ℹ️ ${message}${details ? '\n\n' + details : ''}`);
+    }
+  };
+
+  const handleDeleteClass = async (classId: string, className: string) => {
+    if (!user?.id) return;
+    
+    // Show in-portal confirmation modal
+    showConfirmationModal({
+      title: 'Delete Class',
+      message: `Are you sure you want to delete "${className}"?`,
+      details: 'This action cannot be undone and will:\n• Remove all class data\n• Delete all enrolled students\n• Remove all attendance records\n• Delete all class sessions',
+      type: 'danger',
+      confirmText: 'Delete Class',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/class-instances/${classId}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              professor_id: user.id
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to delete class');
+          }
+
+          // Refresh the classes list
+          await fetchClasses();
+          
+          // Show success notification
+          showNotification('success', 'Class deleted successfully!', 'The class and all its data have been permanently removed.');
+        } catch (error) {
+          console.error('Error deleting class:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          showNotification('error', 'Failed to delete class', errorMessage);
+        }
+      }
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
@@ -749,16 +998,24 @@ function ClassesPageContent() {
                         {getPerformanceIcon(classData.performance_grade)}
                       </div>
                       <div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                          {classData.code}
-                        </h3>
+                        <div className="flex items-center space-x-2">
+                          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                            {classData.courses?.code}
+                          </h3>
+                          {classData.is_pinned && (
+                            <Pin className="w-4 h-4 text-amber-500" />
+                          )}
+                        </div>
                         <div className="flex items-center space-x-2 mt-1">
                           <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                            classData.is_active
+                            classData.status === 'active'
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400'
+                              : classData.status === 'completed'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400'
                               : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
                           }`}>
-                            {classData.is_active ? 'Active' : 'Inactive'}
+                            {classData.status === 'active' ? 'Active' : 
+                             classData.status === 'completed' ? 'Completed' : 'Inactive'}
                           </span>
                           {classData.active_sessions && classData.active_sessions > 0 && (
                             <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400 animate-pulse">
@@ -769,18 +1026,59 @@ function ClassesPageContent() {
                       </div>
                     </div>
                     
-                    <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </Button>
+                    <div className="relative">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => setOpenMenuId(openMenuId === classData.id ? null : classData.id)}
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                      
+                      {openMenuId === classData.id && (
+                        <div className="dropdown-menu absolute right-0 top-8 z-50 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1">
+                          <button
+                            onClick={() => {
+                              togglePin(classData.id);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center"
+                          >
+                            {classData.is_pinned ? (
+                              <>
+                                <PinOff className="w-4 h-4 mr-2" />
+                                Unpin Class
+                              </>
+                            ) : (
+                              <>
+                                <Pin className="w-4 h-4 mr-2" />
+                                Pin Class
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleDeleteClass(classData.id, classData.courses?.name || 'Unknown Class');
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete Class
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Class Name & Description */}
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2">
-                      {classData.name}
+                      {classData.courses?.name}
                     </h4>
                     <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
-                      {classData.description}
+                      {classData.courses?.description}
                     </p>
                   </div>
 
@@ -788,7 +1086,18 @@ function ClassesPageContent() {
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <Clock className="w-4 h-4 mr-2" />
-                      {classData.schedule_info}
+                      {classData.days_of_week?.map(day => {
+                        switch(day) {
+                          case 'Monday': return 'M';
+                          case 'Tuesday': return 'T';
+                          case 'Wednesday': return 'W';
+                          case 'Thursday': return 'Th';
+                          case 'Friday': return 'F';
+                          case 'Saturday': return 'S';
+                          case 'Sunday': return 'Su';
+                          default: return day.substring(0, 2);
+                        }
+                      }).join('')} {classData.start_time}-{classData.end_time}
                     </div>
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <MapPin className="w-4 h-4 mr-2" />
@@ -796,11 +1105,11 @@ function ClassesPageContent() {
                     </div>
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <Users className="w-4 h-4 mr-2" />
-                      {classData.enrolled_students}/{classData.max_students} Students
+                      {classData.current_enrollment}/{classData.max_students} Students
                     </div>
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <GraduationCap className="w-4 h-4 mr-2" />
-                      {classData.credits} Credits
+                      {classData.courses?.credits} Credits
                     </div>
                   </div>
 
@@ -850,7 +1159,7 @@ function ClassesPageContent() {
                     </div>
                     <div className="text-center">
                       <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                        {Math.round((classData.enrolled_students / classData.max_students) * 100)}%
+                        {classData.capacity_percentage || 0}%
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                         Capacity
@@ -978,6 +1287,46 @@ function ClassesPageContent() {
                   )}
                 </div>
 
+                {/* Academic Period Selection */}
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Academic Period *
+                  </label>
+                  <select
+                    value={createForm.academic_period_id}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, academic_period_id: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
+                    required
+                  >
+                    <option value="">Choose academic period...</option>
+                    {academicPeriods
+                      .filter(period => {
+                        // Only show current and past periods, no future periods
+                        const periodDate = new Date(period.start_date);
+                        const today = new Date();
+                        const isPastOrCurrent = periodDate <= today;
+                        const isCurrent = period.is_current;
+                        
+                        // Show current period and past periods, but not future ones
+                        return isCurrent || isPastOrCurrent;
+                      })
+                      .sort((a, b) => {
+                        // Sort by year descending, then by semester order
+                        if (a.year !== b.year) return b.year - a.year;
+                        const semesterOrder: { [key: string]: number } = { 'fall': 4, 'summer_ii': 3, 'summer_i': 2, 'spring': 1 };
+                        return (semesterOrder[b.semester] || 0) - (semesterOrder[a.semester] || 0);
+                      })
+                      .map((period) => (
+                        <option key={period.id} value={period.id}>
+                          {period.name} {period.is_current ? '(Current)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Select the academic period for this class. Only current and past periods are available.
+                  </p>
+                </div>
+
                 {/* Room and Max Students */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -1025,13 +1374,13 @@ function ClassesPageContent() {
                           onClick={() => {
                             setCreateForm(prev => ({
                               ...prev,
-                              days: prev.days.includes(day)
-                                ? prev.days.filter(d => d !== day)
-                                : [...prev.days, day]
+                              days_of_week: prev.days_of_week.includes(day)
+                                ? prev.days_of_week.filter(d => d !== day)
+                                : [...prev.days_of_week, day]
                             }));
                           }}
                           className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            createForm.days.includes(day)
+                            createForm.days_of_week.includes(day)
                               ? 'bg-emerald-600 text-white shadow-md'
                               : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                           }`}
@@ -1069,44 +1418,59 @@ function ClassesPageContent() {
                   </div>
 
                   {/* Custom Schedule Override */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                      Custom Schedule (Optional)
-                    </label>
-                    <Input
-                      placeholder="e.g., MWF 10:00-10:50, TTh 14:00-15:15"
-                      value={createForm.custom_schedule}
-                      onChange={(e) => setCreateForm(prev => ({ ...prev, custom_schedule: e.target.value }))}
-                      className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
-                    />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Leave empty to auto-generate from days and times above
-                    </p>
+                  {/* Class Dates */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        First Class Date *
+                      </label>
+                      <Input
+                        type="date"
+                        value={createForm.first_class_date}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, first_class_date: e.target.value }))}
+                        className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        Last Class Date *
+                      </label>
+                      <Input
+                        type="date"
+                        value={createForm.last_class_date}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, last_class_date: e.target.value }))}
+                        className="bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                        required
+                      />
+                    </div>
                   </div>
 
                   {/* Schedule Preview */}
-                  {(createForm.days.length > 0 && createForm.start_time && createForm.end_time) || createForm.custom_schedule ? (
+                  {createForm.days_of_week.length > 0 && createForm.start_time && createForm.end_time ? (
                     <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-700">
                       <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
                         Schedule Preview:
                       </p>
                       <p className="text-sm text-blue-700 dark:text-blue-300">
-                        {createForm.custom_schedule || 
-                         (createForm.days.length > 0 && createForm.start_time && createForm.end_time ? 
-                          `${createForm.days.map(day => {
-                            switch(day) {
-                              case 'Monday': return 'M';
-                              case 'Tuesday': return 'T';
-                              case 'Wednesday': return 'W';
-                              case 'Thursday': return 'Th';
-                              case 'Friday': return 'F';
-                              case 'Saturday': return 'S';
-                              case 'Sunday': return 'Su';
-                              default: return day.substring(0, 2);
-                            }
-                          }).join('')} ${createForm.start_time}-${createForm.end_time}` : 
-                          'No schedule configured')}
+                        {createForm.days_of_week.map(day => {
+                          switch(day) {
+                            case 'Monday': return 'M';
+                            case 'Tuesday': return 'T';
+                            case 'Wednesday': return 'W';
+                            case 'Thursday': return 'Th';
+                            case 'Friday': return 'F';
+                            case 'Saturday': return 'S';
+                            case 'Sunday': return 'Su';
+                            default: return day.substring(0, 2);
+                          }
+                        }).join('')} {createForm.start_time}-{createForm.end_time}
                       </p>
+                      {createForm.first_class_date && createForm.last_class_date && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          From {new Date(createForm.first_class_date).toLocaleDateString()} to {new Date(createForm.last_class_date).toLocaleDateString()}
+                        </p>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -1149,6 +1513,74 @@ function ClassesPageContent() {
         onClose={() => setShowPasswordChange(false)}
         onChangePassword={handlePasswordChange}
       />
+
+      {/* Confirmation Modal */}
+      {confirmationModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  confirmationModal.type === 'danger' 
+                    ? 'bg-red-100 dark:bg-red-900/30' 
+                    : confirmationModal.type === 'warning'
+                    ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                    : 'bg-blue-100 dark:bg-blue-900/30'
+                }`}>
+                  {confirmationModal.type === 'danger' ? (
+                    <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  ) : confirmationModal.type === 'warning' ? (
+                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                  ) : (
+                    <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {confirmationModal.title}
+                  </h3>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-slate-700 dark:text-slate-300 mb-2">
+                  {confirmationModal.message}
+                </p>
+                {confirmationModal.details && (
+                  <div className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-line">
+                    {confirmationModal.details}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex space-x-3 justify-end">
+                <Button
+                  onClick={closeConfirmationModal}
+                  variant="outline"
+                  className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                >
+                  {confirmationModal.cancelText}
+                </Button>
+                <Button
+                  onClick={() => {
+                    confirmationModal.onConfirm();
+                    closeConfirmationModal();
+                  }}
+                  className={`${
+                    confirmationModal.type === 'danger'
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : confirmationModal.type === 'warning'
+                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {confirmationModal.confirmText}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

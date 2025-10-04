@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ProfileDropdown from '@/components/profile/profile-dropdown';
+import RealTimeClock from '@/components/real-time-clock';
 
 interface ProfessorHeaderProps {
   currentPage: 'dashboard' | 'classes' | 'sessions' | 'students' | 'analytics';
@@ -31,7 +32,6 @@ export default function ProfessorHeader({
   onDeleteAvatar
 }: ProfessorHeaderProps) {
   const { user } = useAuth();
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
@@ -53,12 +53,6 @@ export default function ProfessorHeader({
     }
   };
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   const getButtonClass = (page: string) => {
     const baseClass = "hover:bg-slate-100 dark:hover:bg-slate-700";
@@ -118,12 +112,9 @@ export default function ProfessorHeader({
 
           {/* Right Actions */}
           <div className="flex items-center space-x-3">
-            {/* Time */}
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
-              <Clock className="w-4 h-4 text-slate-500" />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+            {/* Real Time Clock */}
+            <div className="hidden sm:flex items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
+              <RealTimeClock showSeconds={true} />
             </div>
 
             {/* Notifications */}

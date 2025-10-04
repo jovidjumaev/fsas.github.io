@@ -33,6 +33,9 @@ interface ClassData {
   enrolled_students: number;
   max_students: number;
   attendance_rate: number;
+  days_of_week?: string[];
+  start_time?: string;
+  end_time?: string;
   next_session?: {
     date: string;
     start_time: string;
@@ -99,6 +102,29 @@ function ProfessorDashboardContent() {
     if (user) {
       fetchDashboardData();
     }
+  }, [user]);
+
+  // Refresh data when page becomes visible (e.g., when returning from other pages)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        fetchDashboardData();
+      }
+    };
+
+    const handleFocus = () => {
+      if (user) {
+        fetchDashboardData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [user]);
 
   const fetchUserProfile = async () => {
@@ -504,13 +530,13 @@ function ProfessorDashboardContent() {
       {/* Header */}
       <ProfessorHeader
         currentPage="dashboard"
-        userProfile={userProfile}
-        onSignOut={handleSignOut}
-        onEditProfile={() => setShowProfileEdit(true)}
-        onChangePassword={() => setShowPasswordChange(true)}
-        onUploadAvatar={handleAvatarUpload}
-        onDeleteAvatar={handleAvatarDelete}
-      />
+                userProfile={userProfile}
+                onSignOut={handleSignOut}
+                onEditProfile={() => setShowProfileEdit(true)}
+                onChangePassword={() => setShowPasswordChange(true)}
+                onUploadAvatar={handleAvatarUpload}
+                onDeleteAvatar={handleAvatarDelete}
+              />
 
       {/* Main Content - Simplified */}
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -536,7 +562,7 @@ function ProfessorDashboardContent() {
                   Start Session
                 </Button>
               </Link>
-              <Link href="/professor/classes">
+              <Link href="/professor/classes?create=true">
                 <Button variant="outline" className="border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 px-6 py-3 rounded-lg">
                   <Plus className="w-5 h-5 mr-2" />
                   New Class
@@ -611,10 +637,10 @@ function ProfessorDashboardContent() {
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
                   Avg Attendance
                 </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white">
-                  {stats.averageAttendance}%
-                </p>
-              </div>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {stats.averageAttendance}%
+                  </p>
+                  </div>
               <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center">
                 <TrendingUp className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
@@ -652,7 +678,7 @@ function ProfessorDashboardContent() {
                   <p className="text-slate-500 dark:text-slate-400 mb-4">
                     Enjoy your day off! 🌟
                   </p>
-                  <Link href="/professor/classes">
+                  <Link href="/professor/classes?create=true">
                     <Button variant="outline" className="border-slate-300 dark:border-slate-600">
                       <Plus className="w-4 h-4 mr-2" />
                       Create New Class
@@ -699,11 +725,11 @@ function ProfessorDashboardContent() {
                             <div className="flex items-center space-x-4 text-xs text-slate-600 dark:text-slate-400">
                               <span className="flex items-center">
                                 <Clock className="w-3 h-3 mr-1" />
-                                {classData.schedule_info}
+                                {classData.days_of_week?.join(', ') || 'No schedule'} • {classData.start_time} - {classData.end_time}
                               </span>
                               <span className="flex items-center">
-                                <MapPin className="w-3 h-3 mr-1" />
-                                {classData.room_location}
+                                <Users className="w-3 h-3 mr-1" />
+                                {classData.enrolled_students}/{classData.max_students} students
                               </span>
                             </div>
                           </div>
@@ -748,21 +774,21 @@ function ProfessorDashboardContent() {
                 <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
                     <Activity className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
+                </div>
+                <div>
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Active Sessions</h2>
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                       {activeSessions.length} sessions running
                     </p>
-                  </div>
                 </div>
               </div>
+                </div>
 
               {activeSessions.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
                     <QrCode className="w-8 h-8 text-slate-400" />
-                  </div>
+                      </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
                     No active sessions
                   </h3>
@@ -773,14 +799,14 @@ function ProfessorDashboardContent() {
                     <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
                       <QrCode className="w-4 h-4 mr-2" />
                       Start Session
-                    </Button>
-                  </Link>
-                </div>
+                  </Button>
+                </Link>
+              </div>
               ) : (
-                <div className="space-y-3">
+              <div className="space-y-3">
                   {activeSessions.map((session) => (
-                    <div
-                      key={session.id}
+                  <div
+                    key={session.id}
                       className="p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 rounded-lg border border-emerald-200 dark:border-emerald-700"
                     >
                       <div className="flex items-center justify-between">
@@ -788,20 +814,20 @@ function ProfessorDashboardContent() {
                           <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
                           <div>
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                              {session.class_code}
+                        {session.class_code}
                             </h3>
                             <p className="text-sm text-slate-700 dark:text-slate-300">
                               {session.class_name}
                             </p>
-                          </div>
-                        </div>
+                    </div>
+                      </div>
                         <div className="text-right">
                           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                             {session.present_count}/{session.total_students}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">Present</p>
-                        </div>
-                      </div>
+                    </div>
+                  </div>
                       <div className="mt-3 flex items-center justify-between">
                         <span className="text-xs text-slate-600 dark:text-slate-400">
                           QR expires: {new Date(session.qr_code_expires_at).toLocaleTimeString()}
@@ -810,9 +836,9 @@ function ProfessorDashboardContent() {
                           <Button className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg">
                             <Eye className="w-4 h-4 mr-1" />
                             View
-                          </Button>
-                        </Link>
-                      </div>
+                  </Button>
+                </Link>
+              </div>
                     </div>
                   ))}
                 </div>
