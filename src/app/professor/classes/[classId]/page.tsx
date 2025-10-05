@@ -474,6 +474,9 @@ function ClassManagementPageContent() {
         // Refresh data
         fetchClassData();
         fetchStudents();
+        
+        // Notify the classes page to refresh
+        window.dispatchEvent(new CustomEvent('classStatusChanged'));
       } else {
         // Show error message
         showNotification('error', result.error);

@@ -114,6 +114,43 @@ router.post('/api/class-instances', async (req, res) => {
     }
     
     console.log('✅ Class instance created successfully:', classInstance.id);
+    
+    // Create corresponding class record for bulk enrollment compatibility
+    try {
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('code, name, description, credits, department_id')
+        .eq('id', course_id)
+        .single();
+      
+      if (!courseError && course) {
+        const { data: newClass, error: classError } = await supabase
+          .from('classes')
+          .insert({
+            code: course.code,
+            name: course.name,
+            description: course.description,
+            credits: course.credits,
+            professor_id,
+            department_id: course.department_id,
+            academic_period_id,
+            room_location,
+            max_students: max_students || 30,
+            is_active: true
+          })
+          .select()
+          .single();
+        
+        if (classError) {
+          console.error('⚠️ Warning: Could not create corresponding class record:', classError);
+        } else {
+          console.log('✅ Corresponding class record created:', newClass.id);
+        }
+      }
+    } catch (syncError) {
+      console.error('⚠️ Warning: Could not sync class record:', syncError);
+    }
+    
     res.json({
       success: true,
       class_instance: classInstance

@@ -920,8 +920,8 @@ app.post('/api/classes', async (req, res) => {
     
     // First, get the course details
     const { data: course, error: courseError } = await supabase
-      .from('classes')
-      .select('code, name, description, credits, department_id, academic_period_id')
+      .from('courses')
+      .select('code, name, description, credits, department_id')
       .eq('id', course_id)
       .single();
     
