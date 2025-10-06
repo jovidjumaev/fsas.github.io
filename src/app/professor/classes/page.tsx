@@ -1190,23 +1190,15 @@ function ClassesPageContent() {
                   )}
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <Link href={`/professor/classes/${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-blue-50 dark:hover:bg-blue-900 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                        <Settings className="w-4 h-4 mr-1" />
-                        Manage
-                      </Button>
-                    </Link>
-                    <Link href={`/professor/sessions?classId=${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-emerald-50 dark:hover:bg-emerald-900 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all">
-                        <Calendar className="w-4 h-4 mr-1" />
-                        Sessions
-                      </Button>
-                    </Link>
-                    <Link href={`/professor/analytics?classId=${classData.id}`}>
-                      <Button variant="outline" size="sm" className="w-full hover:bg-purple-50 dark:hover:bg-purple-900 hover:border-purple-300 dark:hover:border-purple-700 transition-all">
-                        <BarChart3 className="w-4 h-4 mr-1" />
-                        Analytics
+                  <div className="flex justify-center">
+                    <Link href={`/professor/classes/${classData.id}`} className="w-full">
+                      <Button 
+                        variant="outline" 
+                        size="default" 
+                        className="w-full h-12 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-700 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-800/30 dark:hover:to-indigo-800/30 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-lg transition-all duration-200 font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-200"
+                      >
+                        <Settings className="w-5 h-5 mr-2" />
+                        Manage Class
                       </Button>
                     </Link>
                   </div>

@@ -104,12 +104,13 @@ router.post('/api/class-instances', async (req, res) => {
     
     if (createError) throw createError;
     
-    // Generate class sessions automatically
-    const { error: sessionError } = await supabase
-      .rpc('generate_class_sessions', { p_class_instance_id: classInstance.id });
-    
-    if (sessionError) {
-      console.error('Error generating sessions:', sessionError);
+    // Generate class sessions automatically using our session management API
+    try {
+      const { generateSessionTemplates } = require('./session-management-api.js');
+      await generateSessionTemplates(classInstance.id);
+      console.log('✅ Session templates generated successfully');
+    } catch (sessionError) {
+      console.error('⚠️ Warning: Could not generate session templates:', sessionError);
       // Don't fail the request, just log the error
     }
     

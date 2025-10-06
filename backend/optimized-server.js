@@ -12,6 +12,12 @@ require('dotenv').config({ path: '.env.local' });
 // Import the new class management API
 const classManagementAPI = require('./final-class-management-api.js');
 
+// Import the session management API
+const sessionManagementAPI = require('./session-management-api.js');
+
+// Import the attendance API
+const attendanceAPI = require('./attendance-api.js');
+
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
@@ -106,6 +112,8 @@ app.get('/api/health', (req, res) => {
 // NEW OPTIMIZED CLASS MANAGEMENT API
 // =====================================================
 app.use('/', classManagementAPI);
+app.use('/', sessionManagementAPI.router);
+app.use('/', attendanceAPI);
 
 // =====================================================
 // USER MANAGEMENT ENDPOINTS
@@ -252,7 +260,7 @@ app.get('/api/sessions', async (req, res) => {
       .from('sessions')
       .select(`
         *,
-        classes!inner(code, name, professor_id, room_location, schedule_info)
+        classes!inner(code, name, professor_id, room_location)
       `)
       .order('date', { ascending: false });
     
@@ -914,9 +922,9 @@ app.get('/api/courses', async (req, res) => {
 // Create a new class
 app.post('/api/classes', async (req, res) => {
   try {
-    const { course_id, professor_id, academic_period_id, room_location, schedule_info, max_students } = req.body;
+    const { course_id, professor_id, academic_period_id, room_location, max_students } = req.body;
     
-    console.log('📚 Creating new class:', { course_id, professor_id, academic_period_id, room_location, schedule_info, max_students });
+    console.log('📚 Creating new class:', { course_id, professor_id, academic_period_id, room_location, max_students });
     
     // First, get the course details
     const { data: course, error: courseError } = await supabase
@@ -945,7 +953,6 @@ app.post('/api/classes', async (req, res) => {
         department_id: course.department_id,
         academic_period_id: academic_period_id,
         room_location,
-        schedule_info,
         max_students,
         is_active: true
       })
@@ -1182,6 +1189,9 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
 // =====================================================
 // SOCKET.IO REAL-TIME UPDATES
 // =====================================================
+
+// Make io available globally for other modules
+global.io = io;
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

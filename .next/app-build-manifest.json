@@ -11,15 +11,15 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/professor/login/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/professor/login/page.js"
-    ],
     "/professor/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/professor/dashboard/page.js"
+    ],
+    "/professor/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/professor/login/page.js"
     ],
     "/professor/classes/page": [
       "static/chunks/webpack.js",
@@ -30,6 +30,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/professor/sessions/page.js"
+    ],
+    "/professor/sessions/[sessionId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/professor/sessions/[sessionId]/page.js"
+    ],
+    "/professor/classes/[classId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/professor/classes/[classId]/page.js"
     ],
     "/professor/students/page": [
       "static/chunks/webpack.js",

@@ -64,7 +64,7 @@ export class QRCodeGenerator {
         return { isValid: false, error: 'QR code has expired' };
       }
 
-      // Recreate the data string
+      // Recreate the data string (matching backend format)
       const data = `${qrData.sessionId}-${qrData.timestamp}-${qrData.nonce}`;
       
       // Generate expected signature

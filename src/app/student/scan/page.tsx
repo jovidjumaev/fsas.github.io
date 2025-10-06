@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth-context';
@@ -60,6 +60,7 @@ function StudentScanContent() {
   const streamRef = useRef<MediaStream | null>(null);
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Dark mode setup
   useEffect(() => {
@@ -245,41 +246,78 @@ function StudentScanContent() {
 
   useEffect(() => {
     fetchUserProfile();
+    fetchScanHistory();
     
-    // Mock scan history
-    setScanHistory([
-      {
-        id: '1',
-        class_code: 'CSC-475',
-        class_name: 'Seminar in Computer Science',
-        professor: 'Dr. Sarah Johnson',
-        room: 'Room 101',
-        time: '10:00 AM - 10:50 AM',
-        status: 'present',
-        scanned_at: '2024-01-15T10:15:00Z'
-      },
-      {
-        id: '2',
-        class_code: 'CSC-301',
-        class_name: 'Data Structures',
-        professor: 'Dr. Michael Chen',
-        room: 'Room 205',
-        time: '2:00 PM - 2:50 PM',
-        status: 'present',
-        scanned_at: '2024-01-15T14:05:00Z'
-      },
-      {
-        id: '3',
-        class_code: 'MAT-201',
-        class_name: 'Calculus II',
-        professor: 'Dr. Emily Davis',
-        room: 'Room 301',
-        time: '4:00 PM - 4:50 PM',
-        status: 'late',
-        scanned_at: '2024-01-15T16:10:00Z'
+    // Check if QR code data is in URL parameters (from scanning)
+    const qrDataParam = searchParams.get('data');
+    if (qrDataParam) {
+      if (user) {
+        // User is authenticated, process the QR code
+        try {
+          const qrData = JSON.parse(decodeURIComponent(qrDataParam));
+          console.log('QR code data from URL:', qrData);
+          processQRCode(JSON.stringify(qrData));
+        } catch (error) {
+          console.error('Error parsing QR code data from URL:', error);
+          setScanResult({
+            success: false,
+            message: 'Invalid QR code data'
+          });
+        }
+      } else {
+        // User is not authenticated, redirect to login with QR data preserved
+        const loginUrl = `/student/login?redirect=${encodeURIComponent(window.location.href)}`;
+        router.push(loginUrl);
       }
-    ]);
-  }, [user]);
+    }
+  }, [user, searchParams]);
+
+  const fetchScanHistory = async () => {
+    if (!user) return;
+    
+    try {
+      // Get student ID
+      const { data: studentData, error: studentError } = await supabase
+        .from('students')
+        .select('student_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (studentError || !studentData) {
+        console.error('Student profile not found');
+        return;
+      }
+
+      // Fetch real attendance history (simplified query)
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('student_id', studentData.student_id)
+        .order('scanned_at', { ascending: false })
+        .limit(10);
+
+      if (attendanceError) {
+        console.error('Error fetching attendance history:', attendanceError);
+        return;
+      }
+
+      // Transform data for display (simplified)
+      const history = attendanceData?.map(record => ({
+        id: record.id,
+        class_code: 'Session', // Simplified for now
+        class_name: 'Class Session',
+        professor: 'Professor',
+        room: 'Classroom',
+        time: 'Class Time',
+        status: record.status,
+        scanned_at: record.scanned_at || record.created_at
+      })) || [];
+
+      setScanHistory(history);
+    } catch (error) {
+      console.error('Error fetching scan history:', error);
+    }
+  };
 
   const startScanning = async () => {
     try {
@@ -319,33 +357,85 @@ function StudentScanContent() {
     setIsScanning(false);
   };
 
-  const simulateQRScan = () => {
-    // Simulate QR code scan
-    setTimeout(() => {
-      const mockClassData = {
-        id: '1',
-        class_code: 'CSC-475',
-        class_name: 'Seminar in Computer Science',
-        professor: 'Dr. Sarah Johnson',
-        room: 'Room 101',
-        time: '10:00 AM - 10:50 AM'
-      };
-
-      setScanResult({
-        success: true,
-        message: 'Attendance marked successfully!',
-        classData: mockClassData
-      });
+  const processQRCode = async (qrData: string) => {
+    try {
+      // Parse the QR code data
+      const qrDataObj = JSON.parse(qrData);
       
-      // Add to scan history
-      setScanHistory(prev => [{
-        ...mockClassData,
-        status: 'present',
-        scanned_at: new Date().toISOString()
-      }, ...prev]);
+      // Validate QR code structure
+      if (!qrDataObj.sessionId || !qrDataObj.timestamp || !qrDataObj.signature) {
+        throw new Error('Invalid QR code format');
+      }
+
+      // Get student ID from user
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Get student ID from the students table
+      const { data: studentData, error: studentError } = await supabase
+        .from('students')
+        .select('student_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (studentError || !studentData) {
+        throw new Error('Student profile not found');
+      }
+
+      // Submit attendance scan
+      const response = await fetch('/api/attendance/scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          qrData: qrDataObj,
+          studentId: studentData.student_id
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setScanResult({
+          success: true,
+          message: result.message || 'Attendance marked successfully!',
+          classData: result.classData
+        });
+        
+        // Refresh scan history with real data
+        await fetchScanHistory();
+      } else {
+        setScanResult({
+          success: false,
+          message: result.error || 'Failed to mark attendance'
+        });
+      }
       
       stopScanning();
-    }, 2000);
+    } catch (error) {
+      console.error('Error processing QR code:', error);
+      setScanResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to process QR code'
+      });
+      stopScanning();
+    }
+  };
+
+  const simulateQRScan = () => {
+    // For testing purposes, you can still use this to test the UI
+    // But in production, this should be replaced with real camera scanning
+    const mockQRData = JSON.stringify({
+      sessionId: '13a09388-ac1a-4e08-8ddf-7a71f2bf318e',
+      timestamp: Date.now(),
+      nonce: 'test-nonce',
+      signature: 'test-signature',
+      expiresAt: new Date(Date.now() + 30000).toISOString()
+    });
+    
+    processQRCode(mockQRData);
   };
 
   const toggleFlashlight = () => {

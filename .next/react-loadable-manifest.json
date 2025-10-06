@@ -45,16 +45,6 @@
       "static/chunks/_app-pages-browser_src_lib_password-change-service_ts.js"
     ]
   },
-  "app/professor/sessions/page.tsx -> @/lib/name-change-service": {
-    "id": "app/professor/sessions/page.tsx -> @/lib/name-change-service",
-    "files": []
-  },
-  "app/professor/sessions/page.tsx -> @/lib/password-change-service": {
-    "id": "app/professor/sessions/page.tsx -> @/lib/password-change-service",
-    "files": [
-      "static/chunks/_app-pages-browser_src_lib_password-change-service_ts.js"
-    ]
-  },
   "app/professor/students/page.tsx -> @/lib/name-change-service": {
     "id": "app/professor/students/page.tsx -> @/lib/name-change-service",
     "files": []
