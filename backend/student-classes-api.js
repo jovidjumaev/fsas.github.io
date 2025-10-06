@@ -21,6 +21,17 @@ router.get('/api/students/:studentId/classes', async (req, res) => {
       .from('enrollments')
       .select(`
         *,
+        class_instances!inner(
+          id,
+          room_location,
+          max_students,
+          current_enrollment,
+          days_of_week,
+          start_time,
+          end_time,
+          first_class_date,
+          last_class_date
+        ),
         classes!inner(
           code,
           name,
@@ -54,24 +65,44 @@ router.get('/api/students/:studentId/classes', async (req, res) => {
       });
     }
     
+    // Get one sample session per class for fallback times/room
+    const sessionsByClassId = {};
+    const classInstanceIds = enrollments.map(e => e.class_instance_id).filter(Boolean);
+    if (classInstanceIds.length > 0) {
+      const { data: sampleSessions } = await supabase
+        .from('class_sessions')
+        .select('class_instance_id, start_time, end_time, room_location, date')
+        .in('class_instance_id', classInstanceIds)
+        .order('date', { ascending: true });
+      if (Array.isArray(sampleSessions)) {
+        for (const s of sampleSessions) {
+          if (!sessionsByClassId[s.class_instance_id]) sessionsByClassId[s.class_instance_id] = s;
+        }
+      }
+    }
+
+    // Get today sessions to compute meets_today reliably
+    const todayIso = new Date().toISOString().split('T')[0];
+    const meetsTodaySet = new Set();
+    if (classInstanceIds.length > 0) {
+      const { data: todaySessions } = await supabase
+        .from('class_sessions')
+        .select('class_instance_id')
+        .in('class_instance_id', classInstanceIds)
+        .eq('date', todayIso);
+      if (Array.isArray(todaySessions)) {
+        for (const t of todaySessions) {
+          meetsTodaySet.add(t.class_instance_id);
+        }
+      }
+    }
+
     // Get attendance statistics for each class
     const classesWithStats = await Promise.all(
       enrollments.map(async (enrollment) => {
         const classData = enrollment.classes;
-        
-        // Get class instance details separately
-        const { data: classInstance, error: classInstanceError } = await supabase
-          .from('class_instances')
-          .select('room_location, schedule_info, max_students, current_enrollment, days_of_week, start_time, end_time')
-          .eq('id', enrollment.class_instance_id)
-          .single();
-        
-        // Get schedule information from class_sessions if available
-        const { data: sessions, error: sessionsError } = await supabase
-          .from('class_sessions')
-          .select('start_time, end_time, room_location')
-          .eq('class_instance_id', enrollment.class_instance_id)
-          .limit(1);
+        const classInstance = enrollment.class_instances || null;
+        const sessions = sessionsByClassId[enrollment.class_instance_id] ? [sessionsByClassId[enrollment.class_instance_id]] : [];
         
         // Get attendance records for this student in this class
         const { data: attendanceRecords, error: attendanceError } = await supabase
@@ -116,6 +147,22 @@ router.get('/api/students/:studentId/classes', async (req, res) => {
         
         const actualTotalSessions = totalSessionsData?.length || 0;
         
+        // Compute meets_today based on days_of_week and date range
+        let meetsToday = meetsTodaySet.has(enrollment.class_instance_id);
+        if (!meetsToday) {
+          try {
+            const today = new Date();
+            const todayName = today.toLocaleDateString('en-US', { weekday: 'long' });
+            const withinRange = classInstance?.first_class_date && classInstance?.last_class_date
+              ? (todayIso >= classInstance.first_class_date && todayIso <= classInstance.last_class_date)
+              : true;
+            const matchesDay = Array.isArray(classInstance?.days_of_week)
+              ? classInstance.days_of_week.includes(todayName)
+              : false;
+            meetsToday = withinRange && matchesDay;
+          } catch (_) {}
+        }
+
         // Use class instance data if available, otherwise fall back to class data
         let roomLocation = 'TBD';
         if (classInstance?.room_location) {
@@ -134,20 +181,37 @@ router.get('/api/students/:studentId/classes', async (req, res) => {
                   const days = Array.isArray(classInstance.days_of_week) ? classInstance.days_of_week.join('') : classInstance.days_of_week;
                   scheduleInfo = `${days} ${classInstance.start_time}-${classInstance.end_time}`;
                 } else if (sessions && sessions.length > 0 && sessions[0].start_time && sessions[0].end_time) {
-                  // Convert 24-hour to 12-hour format for consistency
+                  // Convert 24-hour to 12-hour format for consistency and include actual days if available
                   const startTime = sessions[0].start_time;
                   const endTime = sessions[0].end_time;
                   const startHour = parseInt(startTime.split(':')[0]);
                   const startMin = startTime.split(':')[1];
                   const endHour = parseInt(endTime.split(':')[0]);
                   const endMin = endTime.split(':')[1];
-                  
+
                   const startPeriod = startHour >= 12 ? 'PM' : 'AM';
                   const endPeriod = endHour >= 12 ? 'PM' : 'AM';
                   const startHour12 = startHour > 12 ? startHour - 12 : startHour === 0 ? 12 : startHour;
                   const endHour12 = endHour > 12 ? endHour - 12 : endHour === 0 ? 12 : endHour;
-                  
-                  scheduleInfo = `Mon/Wed ${startHour12}:${startMin} ${startPeriod} - ${endHour12}:${endMin} ${endPeriod}`;
+
+                  const dayAbbrev = (d) => {
+                    const map = { Sunday: 'Sun', Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat' };
+                    return map[d] || d;
+                  };
+                  let daysLabel = 'Days';
+                  if (classInstance?.days_of_week) {
+                    if (Array.isArray(classInstance.days_of_week)) {
+                      daysLabel = classInstance.days_of_week.map(dayAbbrev).join('/');
+                    } else if (typeof classInstance.days_of_week === 'string') {
+                      // Keep provided encoding (e.g., MWF/TR) but normalize common values
+                      const enc = classInstance.days_of_week;
+                      if (/MWF/i.test(enc)) daysLabel = 'Mon/Wed/Fri';
+                      else if (/(TR|TTh)/i.test(enc)) daysLabel = 'Tue/Thu';
+                      else daysLabel = enc;
+                    }
+                  }
+
+                  scheduleInfo = `${daysLabel} ${startHour12}:${startMin} ${startPeriod} - ${endHour12}:${endMin} ${endPeriod}`;
                 } else if (classData.schedule_info) {
                   scheduleInfo = classData.schedule_info;
                 }
@@ -166,6 +230,13 @@ router.get('/api/students/:studentId/classes', async (req, res) => {
           professor_email: enrollment.professors.users.email,
           room: roomLocation,
           schedule: scheduleInfo,
+          // Structured scheduling fields for reliable client-side filtering
+          days_of_week: classInstance?.days_of_week || null,
+          start_time: classInstance?.start_time || (sessions && sessions[0]?.start_time) || null,
+          end_time: classInstance?.end_time || (sessions && sessions[0]?.end_time) || null,
+          first_class_date: classInstance?.first_class_date || null,
+          last_class_date: classInstance?.last_class_date || null,
+          meets_today: meetsToday,
           academic_period: enrollment.academic_periods.name,
           enrollment_date: enrollment.enrollment_date,
           attendance_rate: attendanceRate,

@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 
 export interface StudentData {
+  // UUID primary key of students table (FK target from enrollments.student_id)
+  id?: string;
   student_id: string;
   student_number: string;
   enrollment_year: number;
@@ -43,6 +45,7 @@ export class StudentDashboardService {
       const { data, error } = await supabase
         .from('students')
         .select(`
+          id,
           student_id,
           student_number,
           enrollment_year,
@@ -66,6 +69,7 @@ export class StudentDashboardService {
       }
 
       return {
+        id: data.id,
         student_id: data.student_id,
         student_number: data.student_number,
         enrollment_year: data.enrollment_year,
@@ -91,14 +95,19 @@ export class StudentDashboardService {
       // Get today's date and day of week
       const today = new Date();
       const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD
-      const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, 2=Tuesday, etc.
+      const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, ...
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const todayName = dayNames[dayOfWeek];
       
       console.log('🔍 getTodayClasses: Today is', todayName, todayString);
 
+      // Resolve the correct student identifier for the API (enrollments.student_id)
+      const studentRecord = await this.getStudentData(userId);
+      // Use students.id (UUID) expected by enrollments.student_id FK
+      const apiStudentId = studentRecord?.id || userId;
+
       // Get the student's enrolled classes
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/students/${userId}/classes`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/students/${apiStudentId}/classes`);
       const classesData = await response.json();
       
       if (!classesData.success) {
@@ -113,26 +122,55 @@ export class StudentDashboardService {
       
       for (const cls of classesData.classes) {
         const schedule = cls.schedule || '';
-        console.log('🔍 Checking class', cls.class_code, 'with schedule:', schedule);
-        
-        // Check if this class meets today based on schedule
-        let meetsToday = false;
-        
-        if (schedule.includes('Mon/Wed') && (todayName === 'Monday' || todayName === 'Wednesday')) {
-          meetsToday = true;
-        } else if (schedule.includes('TTh') && (todayName === 'Tuesday' || todayName === 'Thursday')) {
-          meetsToday = true;
-        } else if (schedule.includes('Mon') && todayName === 'Monday') {
-          meetsToday = true;
-        } else if (schedule.includes('Tue') && todayName === 'Tuesday') {
-          meetsToday = true;
-        } else if (schedule.includes('Wed') && todayName === 'Wednesday') {
-          meetsToday = true;
-        } else if (schedule.includes('Thu') && todayName === 'Thursday') {
-          meetsToday = true;
-        } else if (schedule.includes('Fri') && todayName === 'Friday') {
-          meetsToday = true;
-        }
+        const daysOfWeek = cls.days_of_week as string[] | string | null | undefined;
+        const startTime = cls.start_time as string | null | undefined;
+        const endTime = cls.end_time as string | null | undefined;
+        console.log('🔍 Checking class', cls.class_code, 'with schedule:', { schedule, daysOfWeek, startTime, endTime });
+
+        // Normalize days from structured field if available
+        const normalizeDay = (d: string) => {
+          const map: Record<string, string> = {
+            Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday',
+            Su: 'Sunday', M: 'Monday', T: 'Tuesday', W: 'Wednesday', R: 'Thursday', Th: 'Thursday', F: 'Friday', S: 'Saturday'
+          };
+          const key = d.trim().slice(0, 3);
+          return map[key] || map[d] || d;
+        };
+
+        const todayMatchesStructured = (() => {
+          if (!daysOfWeek) return false;
+          if (Array.isArray(daysOfWeek)) {
+            const normalized = daysOfWeek.map((d) => normalizeDay(d));
+            return normalized.includes(todayName);
+          }
+          const s = String(daysOfWeek);
+          // Handle common compact encodings like MWF, TR
+          const enc = s.toUpperCase();
+          const isMWF = enc.includes('MWF') && (todayName === 'Monday' || todayName === 'Wednesday' || todayName === 'Friday');
+          const isTR = (enc.includes('TR') || enc.includes('TTH')) && (todayName === 'Tuesday' || todayName === 'Thursday');
+          const hasMon = /\bMON/.test(enc) && todayName === 'Monday';
+          const hasTue = /\bTUE/.test(enc) && todayName === 'Tuesday';
+          const hasWed = /\bWED/.test(enc) && todayName === 'Wednesday';
+          const hasThu = /\bTH(U)?/.test(enc) && todayName === 'Thursday';
+          const hasFri = /\bFRI/.test(enc) && todayName === 'Friday';
+          return isMWF || isTR || hasMon || hasTue || hasWed || hasThu || hasFri;
+        })();
+
+        // Fallback to legacy string matching if structured days are missing
+        const todayMatchesLegacy = (() => {
+          let meets = false;
+          if (schedule.includes('Mon/Wed') && (todayName === 'Monday' || todayName === 'Wednesday')) meets = true;
+          else if ((schedule.includes('TTh') || schedule.includes('Tue/Thu') || schedule.includes('Tue & Thu')) && (todayName === 'Tuesday' || todayName === 'Thursday')) meets = true;
+          else if (schedule.includes('MWF') && (todayName === 'Monday' || todayName === 'Wednesday' || todayName === 'Friday')) meets = true;
+          else if (schedule.includes('Mon') && todayName === 'Monday') meets = true;
+          else if (schedule.includes('Tue') && todayName === 'Tuesday') meets = true;
+          else if (schedule.includes('Wed') && todayName === 'Wednesday') meets = true;
+          else if (schedule.includes('Thu') && todayName === 'Thursday') meets = true;
+          else if (schedule.includes('Fri') && todayName === 'Friday') meets = true;
+          return meets;
+        })();
+
+        const meetsToday = todayMatchesStructured || todayMatchesLegacy;
         
         if (meetsToday) {
           console.log('✅ Class', cls.class_code, 'meets today!');
@@ -140,7 +178,7 @@ export class StudentDashboardService {
             id: cls.class_id || cls.id,
             class_code: cls.class_code,
             class_name: cls.class_name,
-            time: cls.schedule || 'TBD',
+            time: (startTime && endTime) ? `${this.formatTime(startTime)} - ${this.formatTime(endTime)}` : (cls.schedule || 'TBD'),
             room: cls.room || 'TBD',
             professor: cls.professor || 'TBD',
             status: 'upcoming' as const
@@ -229,8 +267,12 @@ export class StudentDashboardService {
     try {
       console.log('🔍 getAllDashboardData: Starting for user:', userId);
       
+      // Resolve the correct student identifier for the API (enrollments.student_id)
+      const studentRecord = await this.getStudentData(userId);
+      const apiStudentId = studentRecord?.id || userId;
+
       // Use the working student classes API to get real data
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/students/${userId}/classes`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/students/${apiStudentId}/classes`);
       const classesData = await response.json();
       
       if (!classesData.success) {

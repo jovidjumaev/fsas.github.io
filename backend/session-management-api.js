@@ -41,9 +41,9 @@ const generateSessionTemplates = async (classInstanceId) => {
     const startTime = classInstance.start_time;
     const endTime = classInstance.end_time;
     
-    // Get academic period dates
-    const periodStart = new Date(classInstance.first_class_date);
-    const periodEnd = new Date(classInstance.last_class_date);
+    // Get academic period dates (treat as UTC date-only to avoid timezone drift)
+    const periodStart = new Date(`${classInstance.first_class_date}T00:00:00Z`);
+    const periodEnd = new Date(`${classInstance.last_class_date}T00:00:00Z`);
     
     // Find the first actual class day that matches the schedule
     let firstClassDate = new Date(periodStart);
@@ -51,12 +51,13 @@ const generateSessionTemplates = async (classInstanceId) => {
     
     // Look for the first day that matches the class schedule
     while (firstClassDate <= periodEnd && !foundFirstClass) {
-      const dayName = firstClassDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const dayIndex = firstClassDate.getUTCDay();
+      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayIndex];
       if (daysOfWeek.includes(dayName)) {
         foundFirstClass = true;
         break;
       }
-      firstClassDate.setDate(firstClassDate.getDate() + 1);
+      firstClassDate.setUTCDate(firstClassDate.getUTCDate() + 1);
     }
     
     if (!foundFirstClass) {
@@ -69,7 +70,8 @@ const generateSessionTemplates = async (classInstanceId) => {
     let currentDate = new Date(firstClassDate);
     
     while (currentDate <= periodEnd) {
-      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const dayIndex = currentDate.getUTCDay();
+      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayIndex];
       
       if (daysOfWeek.includes(dayName)) {
         sessions.push({
@@ -86,7 +88,7 @@ const generateSessionTemplates = async (classInstanceId) => {
         });
       }
       
-      currentDate.setDate(currentDate.getDate() + 1);
+      currentDate.setUTCDate(currentDate.getUTCDate() + 1);
     }
     
     // Insert sessions into database
