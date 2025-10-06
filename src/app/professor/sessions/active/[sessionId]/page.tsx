@@ -769,7 +769,11 @@ function ActiveSessionContent() {
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                    {session.class_code} - {sessionExpired ? 'Session Ended' : 'Active Session'}
+                    {session.class_code} - {new Date(session.date).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    })} - {sessionExpired ? 'Session Ended' : 'Active Session'}
                   </h1>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {session.class_name}

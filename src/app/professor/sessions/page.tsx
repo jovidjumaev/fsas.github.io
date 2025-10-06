@@ -521,7 +521,7 @@ function SessionsPageContent() {
                     <div className="space-y-2 mb-4">
                       <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                         <Calendar className="w-4 h-4 mr-2" />
-                        {new Date(session.date).toLocaleDateString('en-US', { 
+                        Session {session.session_number} - {new Date(session.date).toLocaleDateString('en-US', { 
                           weekday: 'short', 
                           month: 'short', 
                           day: 'numeric' 

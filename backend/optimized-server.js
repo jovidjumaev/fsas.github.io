@@ -541,9 +541,9 @@ app.get('/api/classes/:classId/sessions', async (req, res) => {
     const { classId } = req.params;
     
     const { data, error } = await supabase
-      .from('sessions')
+      .from('class_sessions')
       .select('*')
-      .eq('class_id', classId)
+      .eq('class_instance_id', classId)
       .order('date', { ascending: false });
     
     if (error) throw error;
@@ -1104,26 +1104,54 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
     const totalStudents = new Set(enrollments.map(e => e.student_id)).size;
     const activeSessionsCount = activeSessions.length;
     
-    // Calculate average attendance (simplified)
-    const { data: attendanceData, error: attendanceError } = await supabase
-      .from('attendance_records')
-      .select(`
-        session_id,
-        status
-      `)
-      .in('session_id', activeSessions.map(s => s.id));
+    // Calculate average attendance from COMPLETED sessions (not active sessions)
+    const { data: completedSessions, error: completedSessionsError } = await supabase
+      .from('class_sessions')
+      .select('id, class_instance_id')
+      .in('class_instance_id', classInstances.map(c => c.id))
+      .eq('status', 'completed');
     
     let averageAttendance = 0;
-    if (!attendanceError && attendanceData.length > 0) {
-      const presentCount = attendanceData.filter(a => a.status === 'present').length;
-      averageAttendance = Math.round((presentCount / attendanceData.length) * 100);
+    if (!completedSessionsError && completedSessions.length > 0) {
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance_records')
+        .select(`
+          session_id,
+          status
+        `)
+        .in('session_id', completedSessions.map(s => s.id));
+      
+      if (!attendanceError && attendanceData.length > 0) {
+        // Count present, late, and excused as "attended" (same logic as analytics)
+        const attendedCount = attendanceData.filter(a => 
+          ['present', 'late', 'excused'].includes(a.status)
+        ).length;
+        averageAttendance = Math.round((attendedCount / attendanceData.length) * 100);
+      }
     }
     
     // Format class instances with stats
-    const classesWithStats = classInstances.map(instance => {
+    const classesWithStats = await Promise.all(classInstances.map(async (instance) => {
       const classEnrollments = enrollments.filter(e => e.class_instance_id === instance.id);
-      const classSessions = activeSessions.filter(s => s.class_instance_id === instance.id);
+      const classActiveSessions = activeSessions.filter(s => s.class_instance_id === instance.id);
+      const classCompletedSessions = completedSessions.filter(s => s.class_instance_id === instance.id);
       const isToday = isClassToday(instance);
+      
+      // Calculate class-specific attendance rate
+      let classAttendanceRate = 0;
+      if (classCompletedSessions.length > 0) {
+        const { data: classAttendanceData } = await supabase
+          .from('attendance_records')
+          .select('status')
+          .in('session_id', classCompletedSessions.map(s => s.id));
+        
+        if (classAttendanceData && classAttendanceData.length > 0) {
+          const attendedCount = classAttendanceData.filter(a => 
+            ['present', 'late', 'excused'].includes(a.status)
+          ).length;
+          classAttendanceRate = Math.round((attendedCount / classAttendanceData.length) * 100);
+        }
+      }
       
       return {
         id: instance.id,
@@ -1137,12 +1165,14 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
         end_time: instance.end_time,
         enrolled_students: instance.current_enrollment || 0,
         max_students: instance.max_students,
-        attendance_rate: 85, // Mock for now
-        status: classSessions.length > 0 ? 'active' : 'upcoming',
+        totalSessions: classActiveSessions.length + classCompletedSessions.length,
+        completedSessions: classCompletedSessions.length,
+        averageAttendance: classAttendanceRate,
+        status: classActiveSessions.length > 0 ? 'active' : 'upcoming',
         isToday: isToday,
         academic_period: instance.academic_periods?.name || 'Unknown Period'
       };
-    });
+    }));
     
     // Format active sessions
     const formattedActiveSessions = activeSessions.map(session => {

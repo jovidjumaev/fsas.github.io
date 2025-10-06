@@ -8,7 +8,7 @@ import {
   ArrowLeft, Settings, Users, Calendar, BarChart3, 
   Clock, MapPin, GraduationCap, Pin, PinOff, MoreHorizontal,
   BookOpen, UserPlus, UserMinus, QrCode, Eye, Edit, Trash2,
-  Search, Check, X, Plus, Minus
+  Search, Check, X, Plus, Minus, Play, Square
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,24 @@ interface Student {
   status: string;
 }
 
+interface SessionData {
+  id: string;
+  class_instance_id: string;
+  session_number: number;
+  date: string;
+  start_time: string;
+  end_time: string;
+  room_location: string;
+  status: 'scheduled' | 'active' | 'completed' | 'cancelled';
+  is_active: boolean;
+  qr_secret?: string;
+  qr_expires_at?: string;
+  attendance_count: number;
+  total_enrolled: number;
+  notes?: string;
+  created_at: string;
+}
+
 function ClassManagementPageContent() {
   const params = useParams();
   const router = useRouter();
@@ -74,7 +92,14 @@ function ClassManagementPageContent() {
 
   const [classData, setClassData] = useState<ClassData | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [sessions, setSessions] = useState<SessionData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  
+  // Analytics states
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'sessions' | 'analytics'>('overview');
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [newStudentEmail, setNewStudentEmail] = useState('');
@@ -94,6 +119,14 @@ function ClassManagementPageContent() {
   const [totalStudents, setTotalStudents] = useState(0);
   const studentsPerPage = 20;
   
+  // Sessions filtering state
+  const [sessionFilters, setSessionFilters] = useState({
+    status: 'all' as 'all' | 'scheduled' | 'active' | 'completed' | 'cancelled',
+    dateFrom: '',
+    dateTo: '',
+    searchTerm: ''
+  });
+
   // Notification state
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'info';
@@ -118,6 +151,20 @@ function ClassManagementPageContent() {
       fetchStudents();
     }
   }, [classId]);
+
+  // Fetch sessions when sessions tab is active
+  useEffect(() => {
+    if (activeTab === 'sessions' && classId) {
+      fetchSessions();
+    }
+  }, [activeTab, classId]);
+
+  // Fetch analytics when analytics tab is active
+  useEffect(() => {
+    if (activeTab === 'analytics' && classId) {
+      fetchAnalytics();
+    }
+  }, [activeTab, classId]);
 
   // Load all students when add student modal opens
   useEffect(() => {
@@ -159,6 +206,38 @@ function ClassManagementPageContent() {
       }
     } catch (error) {
       console.error('Error fetching students:', error);
+    }
+  };
+
+  const fetchSessions = async () => {
+    setIsLoadingSessions(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/class-instances/${classId}/sessions`);
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      setSessions([]);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    setIsLoadingAnalytics(true);
+    try {
+      const response = await fetch(`http://localhost:3001/api/classes/${classId}/analytics`);
+      if (response.ok) {
+        const data = await response.json();
+        setAnalyticsData(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalyticsData(null);
+    } finally {
+      setIsLoadingAnalytics(false);
     }
   };
 
@@ -488,6 +567,119 @@ function ClassManagementPageContent() {
     }
   };
 
+  // Session management functions
+  const startSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/sessions/${sessionId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          professor_id: user?.id
+        }),
+      });
+
+      if (response.ok) {
+        showNotification('success', 'Session started successfully');
+        fetchSessions();
+      } else {
+        const errorData = await response.json();
+        showNotification('error', errorData.error || 'Failed to start session');
+      }
+    } catch (error) {
+      console.error('Error starting session:', error);
+      showNotification('error', 'Error starting session');
+    }
+  };
+
+  const stopSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/sessions/${sessionId}/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          professor_id: user?.id
+        }),
+      });
+
+      if (response.ok) {
+        showNotification('success', 'Session stopped successfully');
+        fetchSessions();
+      } else {
+        const errorData = await response.json();
+        showNotification('error', errorData.error || 'Failed to stop session');
+      }
+    } catch (error) {
+      console.error('Error stopping session:', error);
+      showNotification('error', 'Error stopping session');
+    }
+  };
+
+  const createNewSession = async () => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/class-instances/${classId}/sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          professor_id: user?.id,
+          date: new Date().toISOString().split('T')[0],
+          start_time: classData?.start_time || '09:00',
+          end_time: classData?.end_time || '10:00',
+          room_location: classData?.room_location || 'TBD'
+        }),
+      });
+
+      if (response.ok) {
+        showNotification('success', 'New session created successfully');
+        fetchSessions();
+      } else {
+        const errorData = await response.json();
+        showNotification('error', errorData.error || 'Failed to create session');
+      }
+    } catch (error) {
+      console.error('Error creating session:', error);
+      showNotification('error', 'Error creating session');
+    }
+  };
+
+  // Filter sessions based on current filters
+  const filteredSessions = sessions.filter(session => {
+    // Status filter
+    if (sessionFilters.status !== 'all' && session.status !== sessionFilters.status) {
+      return false;
+    }
+
+    // Date range filter
+    if (sessionFilters.dateFrom && session.date < sessionFilters.dateFrom) {
+      return false;
+    }
+    if (sessionFilters.dateTo && session.date > sessionFilters.dateTo) {
+      return false;
+    }
+
+    // Search term filter
+    if (sessionFilters.searchTerm) {
+      const searchLower = sessionFilters.searchTerm.toLowerCase();
+      const searchableText = `${session.session_number} ${session.date} ${session.start_time} ${session.end_time} ${session.room_location} ${session.notes || ''}`.toLowerCase();
+      if (!searchableText.includes(searchLower)) {
+        return false;
+      }
+    }
+
+    return true;
+  }).sort((a, b) => {
+    // Sort by date (oldest first), then by session number
+    if (a.date !== b.date) {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    }
+    return a.session_number - b.session_number;
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
@@ -769,15 +961,21 @@ function ClassManagementPageContent() {
                 </div>
                 <div className="text-center p-3 rounded-lg bg-purple-50 dark:bg-purple-900/20">
                   <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    0
+                    {sessions.filter(s => s.status === 'completed').length}
                   </div>
-                  <div className="text-sm text-slate-600 dark:text-slate-300">Sessions</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300">Completed Sessions</div>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20">
                   <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                    0%
+                    {(() => {
+                      const completedSessions = sessions.filter(s => s.status === 'completed');
+                      return completedSessions.length > 0 
+                        ? Math.round(completedSessions.reduce((acc, session) => 
+                            acc + (session.total_enrolled > 0 ? (session.attendance_count / session.total_enrolled) * 100 : 0), 0) / completedSessions.length)
+                        : 0;
+                    })()}%
                   </div>
-                  <div className="text-sm text-slate-600 dark:text-slate-300">Attendance</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300">Avg Attendance</div>
                 </div>
               </div>
             </Card>
@@ -1100,25 +1298,536 @@ function ClassManagementPageContent() {
         )}
 
         {activeTab === 'sessions' && (
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Class Sessions</h3>
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-              <Calendar className="w-12 h-12 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
-              <p className="text-lg font-medium mb-2">Sessions Management</p>
-              <p className="text-sm">Coming soon...</p>
-            </div>
-          </Card>
+          <div className="space-y-6">
+            {/* Sessions Header */}
+            <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Class Sessions</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Manage attendance sessions for {classData?.courses?.code} - Section {classData?.section_number}
+                  </p>
+                </div>
+                <Button 
+                  onClick={createNewSession}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 dark:from-blue-500 dark:to-indigo-500 dark:hover:from-blue-600 dark:hover:to-indigo-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 border-0"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Session
+                </Button>
+              </div>
+
+              {/* Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                {/* Status Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={sessionFilters.status}
+                    onChange={(e) => setSessionFilters(prev => ({ ...prev, status: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Sessions</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Date From Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    From Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={sessionFilters.dateFrom}
+                    onChange={(e) => setSessionFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Date To Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    To Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={sessionFilters.dateTo}
+                    onChange={(e) => setSessionFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Search Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Search
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                    <Input
+                      placeholder="Search sessions..."
+                      value={sessionFilters.searchTerm}
+                      onChange={(e) => setSessionFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Clear Filters */}
+              {(sessionFilters.status !== 'all' || sessionFilters.dateFrom || sessionFilters.dateTo || sessionFilters.searchTerm) && (
+                <div className="flex justify-end mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSessionFilters({
+                      status: 'all',
+                      dateFrom: '',
+                      dateTo: '',
+                      searchTerm: ''
+                    })}
+                    className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Clear Filters
+                  </Button>
+                </div>
+              )}
+            </Card>
+
+            {/* Sessions List */}
+            <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+              {isLoadingSessions ? (
+                <div className="text-center py-12">
+                  <LoadingSpinner className="mx-auto mb-4" />
+                  <p className="text-slate-500 dark:text-slate-400">Loading sessions...</p>
+                </div>
+              ) : filteredSessions.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  <Calendar className="w-12 h-12 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
+                  <p className="text-lg font-medium mb-2">
+                    {sessions.length === 0 ? 'No sessions found' : 'No sessions match your filters'}
+                  </p>
+                  <p className="text-sm">
+                    {sessions.length === 0 
+                      ? 'Create your first session to start tracking attendance.' 
+                      : 'Try adjusting your filters to see more sessions.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`p-4 rounded-lg border transition-all duration-200 ${
+                        session.status === 'active'
+                          ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-200 dark:border-emerald-700'
+                          : session.status === 'completed'
+                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700'
+                          : session.status === 'cancelled'
+                          ? 'bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-200 dark:border-red-700'
+                          : 'bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-700/50 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            session.status === 'active'
+                              ? 'bg-emerald-500 text-white'
+                              : session.status === 'completed'
+                              ? 'bg-blue-500 text-white'
+                              : session.status === 'cancelled'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-slate-500 text-white'
+                          }`}>
+                            <span className="text-xs font-bold text-center leading-tight">
+                              {new Date(session.date).toLocaleDateString('en-US', { 
+                                month: 'numeric', 
+                                day: 'numeric' 
+                              })}
+                            </span>
+                          </div>
+                            <div>
+                              <div className="flex items-center space-x-2 mb-1">
+                                <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+                                  {new Date(session.date).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    year: 'numeric' 
+                                  })}
+                                </h4>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                session.status === 'active'
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300'
+                                  : session.status === 'completed'
+                                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300'
+                                  : session.status === 'cancelled'
+                                  ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
+                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300'
+                              }`}>
+                                {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                              </span>
+                              {session.is_active && (
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-4 text-sm text-slate-600 dark:text-slate-400">
+                              <div className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-1" />
+                                {new Date(session.date).toLocaleDateString()}
+                              </div>
+                              <div className="flex items-center">
+                                <Clock className="w-4 h-4 mr-1" />
+                                {session.start_time} - {session.end_time}
+                              </div>
+                              <div className="flex items-center">
+                                <MapPin className="w-4 h-4 mr-1" />
+                                {session.room_location}
+                              </div>
+                            </div>
+                            {session.notes && (
+                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                {session.notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          {/* Attendance Stats */}
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                              {session.attendance_count}/{session.total_enrolled}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Present ({session.total_enrolled > 0 ? Math.round((session.attendance_count / session.total_enrolled) * 100) : 0}%)
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center space-x-2">
+                            {session.status === 'scheduled' && (
+                              <Button
+                                onClick={() => startSession(session.id)}
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              >
+                                <Play className="w-4 h-4 mr-1" />
+                                Start
+                              </Button>
+                            )}
+                            {session.status === 'active' && (
+                              <Button
+                                onClick={() => stopSession(session.id)}
+                                size="sm"
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                              >
+                                <Square className="w-4 h-4 mr-1" />
+                                Stop
+                              </Button>
+                            )}
+                            {session.status === 'completed' && (
+                              <Button
+                                onClick={() => router.push(`/professor/sessions/${session.id}?manage=true`)}
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                <Edit className="w-4 h-4 mr-1" />
+                                Manage
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => router.push(`/professor/sessions/${session.id}`)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
         )}
 
         {activeTab === 'analytics' && (
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Analytics</h3>
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-              <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
-              <p className="text-lg font-medium mb-2">Analytics Dashboard</p>
-              <p className="text-sm">Coming soon...</p>
-            </div>
-          </Card>
+          <div className="space-y-6">
+            {/* Analytics Header */}
+            <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Class Analytics</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">Attendance trends and student performance</p>
+                </div>
+                <Button
+                  onClick={fetchAnalytics}
+                  disabled={isLoadingAnalytics}
+                  variant="outline"
+                  size="sm"
+                >
+                  {isLoadingAnalytics ? (
+                    <LoadingSpinner className="w-4 h-4 mr-2" />
+                  ) : (
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                  )}
+                  Refresh
+                </Button>
+              </div>
+
+              {isLoadingAnalytics ? (
+                <div className="text-center py-12">
+                  <LoadingSpinner className="mx-auto mb-4" />
+                  <p className="text-slate-500 dark:text-slate-400">Loading analytics...</p>
+                </div>
+              ) : analyticsData ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {analyticsData.total_sessions}
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">Completed Sessions</p>
+                  </div>
+                  <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                      {analyticsData.total_students}
+                    </p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300">Total Students</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {analyticsData.average_attendance_rate.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-purple-700 dark:text-purple-300">Avg Attendance</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                  <BarChart3 className="w-12 h-12 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
+                  <p className="text-lg font-medium mb-2">No Analytics Data</p>
+                  <p className="text-sm">Complete some sessions to see analytics</p>
+                </div>
+              )}
+            </Card>
+
+            {analyticsData && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Student List - Left Side */}
+                <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Student Attendance</h4>
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                      <Input
+                        placeholder="Search students..."
+                        value={analyticsSearchQuery}
+                        onChange={(e) => setAnalyticsSearchQuery(e.target.value)}
+                        className="pl-10 w-64"
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="max-h-96 overflow-y-auto space-y-2">
+                    {analyticsData.student_analytics
+                      .filter((student: any) => 
+                        `${student.first_name} ${student.last_name}`.toLowerCase().includes(analyticsSearchQuery.toLowerCase()) ||
+                        student.student_id.toLowerCase().includes(analyticsSearchQuery.toLowerCase())
+                      )
+                      .map((student: any) => (
+                        <div
+                          key={student.student_id}
+                          className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-900 dark:text-white">
+                              {student.first_name} {student.last_name}
+                            </p>
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                              ID: {student.student_id}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-16 bg-slate-200 dark:bg-slate-600 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    student.attendance_percentage >= 80
+                                      ? 'bg-emerald-500'
+                                      : student.attendance_percentage >= 60
+                                      ? 'bg-yellow-500'
+                                      : 'bg-red-500'
+                                  }`}
+                                  style={{ width: `${Math.min(student.attendance_percentage, 100)}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white min-w-[3rem]">
+                                {student.attendance_percentage.toFixed(1)}%
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {student.attended_sessions}/{student.total_sessions} sessions
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </Card>
+
+                {/* Charts - Right Side */}
+                <div className="space-y-6">
+                  {/* Attendance Trend Timeline Chart */}
+                  <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Attendance Trend Timeline</h4>
+                    <div className="h-64 relative">
+                      {/* Chart Container */}
+                      <div className="absolute inset-0 p-4">
+                        {/* Y-axis labels */}
+                        <div className="absolute left-0 top-0 bottom-0 w-8 flex flex-col justify-between text-xs text-slate-500 dark:text-slate-400">
+                          <span>100%</span>
+                          <span>75%</span>
+                          <span>50%</span>
+                          <span>25%</span>
+                          <span>0%</span>
+                        </div>
+                        
+                        {/* Chart Area */}
+                        <div className="ml-8 mr-4 h-full relative">
+                          {/* Grid lines */}
+                          <div className="absolute inset-0">
+                            {[0, 25, 50, 75, 100].map((line) => (
+                              <div
+                                key={line}
+                                className="absolute w-full border-t border-slate-200 dark:border-slate-600"
+                                style={{ bottom: `${line}%` }}
+                              ></div>
+                            ))}
+                          </div>
+                          
+                          {/* Data points and line */}
+                          {analyticsData.attendance_trends.length > 0 && (
+                            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                              {/* Line path */}
+                              <polyline
+                                fill="none"
+                                stroke="rgb(59, 130, 246)"
+                                strokeWidth="0.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                points={analyticsData.attendance_trends.map((trend: any, index: number) => {
+                                  const x = (index / (analyticsData.attendance_trends.length - 1)) * 100;
+                                  const y = 100 - trend.attendance_rate;
+                                  return `${x},${y}`;
+                                }).join(' ')}
+                              />
+                              
+                              {/* Data points */}
+                              {analyticsData.attendance_trends.map((trend: any, index: number) => {
+                                const x = (index / (analyticsData.attendance_trends.length - 1)) * 100;
+                                const y = 100 - trend.attendance_rate;
+                                return (
+                                  <circle
+                                    key={trend.session_id}
+                                    cx={x}
+                                    cy={y}
+                                    r="1.5"
+                                    fill="rgb(59, 130, 246)"
+                                    className="hover:r-2 transition-all duration-200"
+                                  />
+                                );
+                              })}
+                            </svg>
+                          )}
+                        </div>
+                        
+                        {/* X-axis labels */}
+                        <div className="absolute bottom-0 left-8 right-4 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                          {analyticsData.attendance_trends.map((trend: any, index: number) => (
+                            <div key={trend.session_id} className="text-center">
+                              <div className="font-medium">S{trend.session_number}</div>
+                              <div className="text-xs">
+                                {new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Legend */}
+                      <div className="absolute top-2 right-2 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 shadow-sm">
+                        <div className="flex items-center space-x-2 text-xs">
+                          <div className="w-3 h-0.5 bg-blue-500"></div>
+                          <span className="text-slate-600 dark:text-slate-300">Attendance Rate</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Trend Summary */}
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400">Highest:</span>
+                          <span className="ml-2 font-medium text-slate-900 dark:text-white">
+                            {Math.max(...analyticsData.attendance_trends.map((t: any) => t.attendance_rate)).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-400">Lowest:</span>
+                          <span className="ml-2 font-medium text-slate-900 dark:text-white">
+                            {Math.min(...analyticsData.attendance_trends.map((t: any) => t.attendance_rate)).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Attendance Distribution */}
+                  <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg dark:shadow-2xl">
+                    <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Attendance Distribution</h4>
+                    <div className="space-y-3">
+                      {[
+                        { label: 'Excellent (80%+)', min: 80, color: 'emerald', count: analyticsData.student_analytics.filter((s: any) => s.attendance_percentage >= 80).length },
+                        { label: 'Good (60-79%)', min: 60, max: 79, color: 'yellow', count: analyticsData.student_analytics.filter((s: any) => s.attendance_percentage >= 60 && s.attendance_percentage < 80).length },
+                        { label: 'Needs Improvement (<60%)', min: 0, max: 59, color: 'red', count: analyticsData.student_analytics.filter((s: any) => s.attendance_percentage < 60).length }
+                      ].map((category) => {
+                        const percentage = analyticsData.total_students > 0 ? (category.count / analyticsData.total_students) * 100 : 0;
+                        
+                        return (
+                          <div key={category.label} className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-3 h-3 rounded-full bg-${category.color}-500`}></div>
+                              <span className="text-sm text-slate-700 dark:text-slate-300">{category.label}</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-20 bg-slate-200 dark:bg-slate-600 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full bg-${category.color}-500 transition-all duration-300`}
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white min-w-[2rem]">
+                                {category.count}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>

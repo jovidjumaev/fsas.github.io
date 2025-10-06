@@ -45,10 +45,28 @@ const generateSessionTemplates = async (classInstanceId) => {
     const periodStart = new Date(classInstance.first_class_date);
     const periodEnd = new Date(classInstance.last_class_date);
     
-    // Generate sessions for each day in the period
+    // Find the first actual class day that matches the schedule
+    let firstClassDate = new Date(periodStart);
+    let foundFirstClass = false;
+    
+    // Look for the first day that matches the class schedule
+    while (firstClassDate <= periodEnd && !foundFirstClass) {
+      const dayName = firstClassDate.toLocaleDateString('en-US', { weekday: 'long' });
+      if (daysOfWeek.includes(dayName)) {
+        foundFirstClass = true;
+        break;
+      }
+      firstClassDate.setDate(firstClassDate.getDate() + 1);
+    }
+    
+    if (!foundFirstClass) {
+      throw new Error('No matching class days found in the specified period');
+    }
+    
+    // Generate sessions starting from the first actual class day
     const sessions = [];
     let sessionNumber = 1;
-    let currentDate = new Date(periodStart);
+    let currentDate = new Date(firstClassDate);
     
     while (currentDate <= periodEnd) {
       const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
@@ -170,16 +188,21 @@ router.get('/api/professors/:professorId/sessions', async (req, res) => {
         .eq('id', session.class_instances.id)
         .single();
       
-      // Get attendance count for this session
+      // Get attendance count for this session (excused counts as present for analytics)
       const { data: attendanceRecords } = await supabase
         .from('attendance_records')
-        .select('id')
+        .select('id, status')
         .eq('session_id', session.id);
+      
+      // Count present, late, and excused as "attended" for analytics
+      const attendedCount = attendanceRecords ? attendanceRecords.filter(record => 
+        ['present', 'late', 'excused'].includes(record.status)
+      ).length : 0;
       
       return {
         ...session,
         total_enrolled: classInstance ? classInstance.current_enrollment : 0,
-        attendance_count: attendanceRecords ? attendanceRecords.length : 0
+        attendance_count: attendedCount // Excused students count as present for analytics
       };
     }));
     
@@ -343,6 +366,46 @@ async function completeSessionAutomatically(sessionId) {
     // Stop QR code rotation
     stopQRCodeRotation(sessionId);
     
+    // Get all enrolled students for this class
+    const { data: enrolledStudents, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select('student_id')
+      .eq('class_instance_id', session.class_instance_id)
+      .eq('status', 'active');
+    
+    if (enrollmentError) throw enrollmentError;
+    
+    // Get existing attendance records for this session
+    const { data: existingRecords, error: recordsError } = await supabase
+      .from('attendance_records')
+      .select('student_id')
+      .eq('session_id', sessionId);
+    
+    if (recordsError) throw recordsError;
+    
+    // Create attendance records for students who don't have them (mark as absent)
+    const existingStudentIds = new Set(existingRecords.map(record => record.student_id));
+    const studentsNeedingRecords = enrolledStudents.filter(
+      enrollment => !existingStudentIds.has(enrollment.student_id)
+    );
+    
+    if (studentsNeedingRecords.length > 0) {
+      const absentRecords = studentsNeedingRecords.map(enrollment => ({
+        session_id: sessionId,
+        student_id: enrollment.student_id,
+        status: 'absent',
+        scanned_at: new Date().toISOString(),
+      }));
+      
+      const { error: insertError } = await supabase
+        .from('attendance_records')
+        .insert(absentRecords);
+      
+      if (insertError) throw insertError;
+      
+      console.log(`✅ Auto-created ${absentRecords.length} absent attendance records`);
+    }
+    
     // Update session
     const { error: updateError } = await supabase
       .from('class_sessions')
@@ -383,6 +446,55 @@ router.post('/api/sessions/:sessionId/complete', async (req, res) => {
     
     // Stop QR code rotation
     stopQRCodeRotation(sessionId);
+    
+    // Get session details to find class instance
+    const { data: session, error: sessionError } = await supabase
+      .from('class_sessions')
+      .select('class_instance_id')
+      .eq('id', sessionId)
+      .single();
+    
+    if (sessionError) throw sessionError;
+    
+    // Get all enrolled students for this class
+    const { data: enrolledStudents, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select('student_id')
+      .eq('class_instance_id', session.class_instance_id)
+      .eq('status', 'active');
+    
+    if (enrollmentError) throw enrollmentError;
+    
+    // Get existing attendance records for this session
+    const { data: existingRecords, error: recordsError } = await supabase
+      .from('attendance_records')
+      .select('student_id')
+      .eq('session_id', sessionId);
+    
+    if (recordsError) throw recordsError;
+    
+    // Create attendance records for students who don't have them (mark as absent)
+    const existingStudentIds = new Set(existingRecords.map(record => record.student_id));
+    const studentsNeedingRecords = enrolledStudents.filter(
+      enrollment => !existingStudentIds.has(enrollment.student_id)
+    );
+    
+    if (studentsNeedingRecords.length > 0) {
+      const absentRecords = studentsNeedingRecords.map(enrollment => ({
+        session_id: sessionId,
+        student_id: enrollment.student_id,
+        status: 'absent',
+        scanned_at: new Date().toISOString(),
+      }));
+      
+      const { error: insertError } = await supabase
+        .from('attendance_records')
+        .insert(absentRecords);
+      
+      if (insertError) throw insertError;
+      
+      console.log(`✅ Created ${absentRecords.length} absent attendance records`);
+    }
     
     // Update session
     const { data: updatedSession, error: updateError } = await supabase
@@ -612,21 +724,26 @@ router.get('/api/sessions/:sessionId', async (req, res) => {
       console.error('❌ Error fetching class instance enrollment count:', classError);
     }
     
-    // Get current attendance count for this session
+    // Get current attendance count for this session (excused counts as present for analytics)
     const { data: attendanceRecords, error: attendanceError } = await supabase
       .from('attendance_records')
-      .select('id')
+      .select('id, status')
       .eq('session_id', sessionId);
     
     if (attendanceError) {
       console.error('❌ Error fetching attendance count:', attendanceError);
     }
     
+    // Count present, late, and excused as "attended" for analytics
+    const attendedCount = attendanceRecords ? attendanceRecords.filter(record => 
+      ['present', 'late', 'excused'].includes(record.status)
+    ).length : 0;
+    
     // Update session with current counts
     const updatedSession = {
       ...session,
       total_enrolled: classInstance ? classInstance.current_enrollment : 0,
-      attendance_count: attendanceRecords ? attendanceRecords.length : 0
+      attendance_count: attendedCount // Excused students count as present for analytics
     };
     
     res.json({
@@ -853,6 +970,379 @@ const notifyStudentsSessionActivated = async (sessionId) => {
     console.error('❌ Error notifying students:', error);
   }
 };
+
+// =====================================================
+// ATTENDANCE MANAGEMENT
+// =====================================================
+
+// Update student attendance status (for professors)
+router.patch('/api/sessions/:sessionId/attendance/:studentNumber', async (req, res) => {
+  try {
+    const { sessionId, studentNumber } = req.params;
+    const { status } = req.body;
+    
+    console.log('📝 Updating attendance status:', { sessionId, studentNumber, status });
+    
+    // Validate status
+    const validStatuses = ['present', 'late', 'absent', 'excused'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be one of: present, late, absent, excused'
+      });
+    }
+    
+    // Check if session exists and is completed
+    const { data: session, error: sessionError } = await supabase
+      .from('class_sessions')
+      .select('id, status')
+      .eq('id', sessionId)
+      .eq('status', 'completed')
+      .single();
+    
+    if (sessionError || !session) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session not found or not completed'
+      });
+    }
+    
+    // Find the student UUID by student number
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .select('user_id')
+      .eq('student_id', studentNumber)
+      .single();
+    
+    if (studentError || !student) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student not found'
+      });
+    }
+    
+    const studentUuid = student.user_id;
+    
+    // Check if attendance record exists
+    const { data: existingRecord, error: recordError } = await supabase
+      .from('attendance_records')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('student_id', studentUuid)
+      .single();
+    
+    if (recordError && recordError.code !== 'PGRST116') {
+      throw recordError;
+    }
+    
+    if (existingRecord) {
+      // Update existing record
+      const { data: updatedRecord, error: updateError } = await supabase
+        .from('attendance_records')
+        .update({
+          status,
+          status_changed_at: new Date().toISOString(),
+          status_change_reason: 'Professor manual update'
+        })
+        .eq('id', existingRecord.id)
+        .select()
+        .single();
+      
+      if (updateError) throw updateError;
+      
+      console.log('✅ Updated existing attendance record');
+    } else {
+      // Create new record
+      const { data: newRecord, error: createError } = await supabase
+        .from('attendance_records')
+        .insert({
+          session_id: sessionId,
+          student_id: studentUuid,
+          status,
+          scanned_at: new Date().toISOString(),
+          status_changed_at: new Date().toISOString(),
+          status_change_reason: 'Professor manual update'
+        })
+        .select()
+        .single();
+      
+      if (createError) throw createError;
+      
+      console.log('✅ Created new attendance record');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Attendance status updated successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Error updating attendance status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =====================================================
+// BACKFILL MISSING ATTENDANCE RECORDS
+// =====================================================
+
+// Backfill missing attendance records for completed sessions
+router.post('/api/classes/:classId/backfill-attendance', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    console.log('🔄 Backfilling attendance records for class:', classId);
+    
+    // Get all completed sessions for this class
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('class_sessions')
+      .select('id, date, session_number, class_instance_id')
+      .eq('class_instance_id', classId)
+      .eq('status', 'completed')
+      .order('date', { ascending: true });
+    
+    if (sessionsError) throw sessionsError;
+    
+    // Get all enrolled students for this class
+    const { data: enrolledStudents, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select('student_id')
+      .eq('class_instance_id', classId)
+      .eq('status', 'active');
+    
+    if (enrollmentError) throw enrollmentError;
+    
+    let totalRecordsCreated = 0;
+    
+    // Process each session
+    for (const session of sessions) {
+      // Get existing attendance records for this session
+      const { data: existingRecords, error: recordsError } = await supabase
+        .from('attendance_records')
+        .select('student_id')
+        .eq('session_id', session.id);
+      
+      if (recordsError) throw recordsError;
+      
+      // Find students who don't have attendance records
+      const existingStudentIds = new Set(existingRecords.map(record => record.student_id));
+      const studentsNeedingRecords = enrolledStudents.filter(
+        enrollment => !existingStudentIds.has(enrollment.student_id)
+      );
+      
+      if (studentsNeedingRecords.length > 0) {
+        const absentRecords = studentsNeedingRecords.map(enrollment => ({
+          session_id: session.id,
+          student_id: enrollment.student_id,
+          status: 'absent',
+          scanned_at: new Date().toISOString()
+        }));
+        
+        const { error: insertError } = await supabase
+          .from('attendance_records')
+          .insert(absentRecords);
+        
+        if (insertError) throw insertError;
+        
+        totalRecordsCreated += absentRecords.length;
+        console.log(`✅ Created ${absentRecords.length} absent records for session ${session.session_number}`);
+      }
+    }
+    
+    console.log(`✅ Backfill complete: ${totalRecordsCreated} attendance records created`);
+    
+    res.json({
+      success: true,
+      message: `Successfully created ${totalRecordsCreated} attendance records`,
+      records_created: totalRecordsCreated,
+      sessions_processed: sessions.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error backfilling attendance records:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =====================================================
+// ANALYTICS API
+// =====================================================
+
+// Get class analytics data
+router.get('/api/classes/:classId/analytics', async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    console.log('📊 Fetching analytics for class:', classId);
+    
+    // Get all completed sessions for this class
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('class_sessions')
+      .select(`
+        id,
+        date,
+        session_number,
+        attendance_count,
+        total_enrolled,
+        class_instances!inner(id)
+      `)
+      .eq('class_instances.id', classId)
+      .eq('status', 'completed')
+      .order('date', { ascending: true });
+    
+    if (sessionsError) throw sessionsError;
+    
+    // Get session IDs for the queries
+    const sessionIds = sessions.map(s => s.id);
+    
+    // Get all enrolled students for this class from enrollments table
+    const { data: enrollments, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select(`
+        student_id,
+        students!inner(
+          user_id,
+          student_id,
+          users!inner(
+            first_name,
+            last_name,
+            email
+          )
+        )
+      `)
+      .eq('class_instance_id', classId)
+      .eq('status', 'active');
+    
+    if (enrollmentError) throw enrollmentError;
+    
+    // These are the actual enrolled students
+    const enrolledStudents = enrollments;
+    
+    // Get attendance records for all completed sessions
+    const { data: attendanceRecords, error: attendanceError } = await supabase
+      .from('attendance_records')
+      .select(`
+        session_id,
+        student_id,
+        status,
+        students!inner(
+          student_id
+        )
+      `)
+      .in('session_id', sessionIds);
+    
+    if (attendanceError) throw attendanceError;
+    
+    // Calculate student attendance percentages
+    const studentAnalytics = enrolledStudents.map(enrollment => {
+      const student = enrollment.students;
+      const studentNumber = student.student_id;
+      
+      // Count attendance for this student across all sessions
+      const studentAttendance = attendanceRecords.filter(record => 
+        record.students.student_id === studentNumber
+      );
+      
+      // Count as attended: present, late, or excused
+      const attendedSessions = studentAttendance.filter(record => 
+        ['present', 'late', 'excused'].includes(record.status)
+      ).length;
+      
+      const totalSessions = sessions.length;
+      const attendancePercentage = totalSessions > 0 ? (attendedSessions / totalSessions) * 100 : 0;
+      
+      // Get detailed attendance status for each session
+      // For each session, either find the actual record or mark as absent
+      const sessionDetails = sessions.map(session => {
+        const attendanceRecord = studentAttendance.find(record => record.session_id === session.id);
+        const status = attendanceRecord ? attendanceRecord.status : 'absent';
+        const attended = ['present', 'late', 'excused'].includes(status);
+        
+        return {
+          session_id: session.id,
+          date: session.date,
+          session_number: session.session_number,
+          status: status,
+          attended: attended,
+          has_record: !!attendanceRecord // Track if there's an actual record in the database
+        };
+      });
+      
+      return {
+        student_id: studentNumber,
+        user_id: student.user_id,
+        first_name: student.users.first_name,
+        last_name: student.users.last_name,
+        email: student.users.email,
+        attended_sessions: attendedSessions,
+        total_sessions: totalSessions,
+        attendance_percentage: Math.round(attendancePercentage * 100) / 100,
+        session_details: sessionDetails
+      };
+    });
+    
+    // Calculate class attendance trends
+    const attendanceTrends = sessions.map(session => {
+      const sessionAttendance = attendanceRecords.filter(record => 
+        record.session_id === session.id
+      );
+      
+      const attendedCount = sessionAttendance.filter(record => 
+        ['present', 'late', 'excused'].includes(record.status)
+      ).length;
+      
+      // Use the actual enrolled students count instead of session.total_enrolled
+      const totalEnrolled = enrolledStudents.length;
+      const attendanceRate = totalEnrolled > 0 ? (attendedCount / totalEnrolled) * 100 : 0;
+      
+      return {
+        session_id: session.id,
+        date: session.date,
+        session_number: session.session_number,
+        attended_count: attendedCount,
+        total_enrolled: totalEnrolled,
+        attendance_rate: Math.round(attendanceRate * 100) / 100
+      };
+    });
+    
+    // Calculate overall statistics
+    const totalSessions = sessions.length;
+    const totalStudents = enrolledStudents.length;
+    const averageAttendanceRate = attendanceTrends.length > 0 
+      ? attendanceTrends.reduce((sum, trend) => sum + trend.attendance_rate, 0) / attendanceTrends.length
+      : 0;
+    
+    const analyticsData = {
+      class_id: classId,
+      total_sessions: totalSessions,
+      total_students: totalStudents,
+      average_attendance_rate: Math.round(averageAttendanceRate * 100) / 100,
+      student_analytics: studentAnalytics.sort((a, b) => b.attendance_percentage - a.attendance_percentage),
+      attendance_trends: attendanceTrends,
+      generated_at: new Date().toISOString()
+    };
+    
+    console.log('✅ Analytics data generated successfully');
+    
+    res.json({
+      success: true,
+      data: analyticsData
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // =====================================================
 // EXPORT FUNCTIONS
