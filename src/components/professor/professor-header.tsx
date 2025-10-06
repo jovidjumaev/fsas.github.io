@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { NotificationPanel } from '@/components/notifications/notification-panel';
 import { 
-  BookOpen, QrCode, BarChart3, Clock, Bell, Settings, LogOut, 
+  BookOpen, QrCode, Clock, Bell, Settings, LogOut, 
   Home, GraduationCap, Moon, Sun
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,12 +94,6 @@ export default function ProfessorHeader({
               <Button variant="ghost" size="sm" className={getButtonClass('sessions')}>
                 <QrCode className="w-4 h-4 mr-2" />
                 Sessions
-              </Button>
-            </Link>
-            <Link href="/professor/analytics">
-              <Button variant="ghost" size="sm" className={getButtonClass('analytics')}>
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Analytics
               </Button>
             </Link>
           </nav>
