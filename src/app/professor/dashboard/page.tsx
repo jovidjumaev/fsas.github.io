@@ -16,6 +16,7 @@ import ProfessorHeader from '@/components/professor/professor-header';
 import ProfileEditModal from '@/components/profile/profile-edit-modal';
 import PasswordChangeModal from '@/components/profile/password-change-modal';
 import { supabase } from '@/lib/supabase';
+import { io } from 'socket.io-client';
 
 interface ProfessorStats {
   totalClasses: number;
@@ -43,6 +44,8 @@ interface ClassData {
   };
   status: 'active' | 'upcoming' | 'completed';
   isToday?: boolean;
+  today_session_id?: string | null;
+  active_session_id?: string | null;
 }
 
 interface ActiveSession {
@@ -101,6 +104,55 @@ function ProfessorDashboardContent() {
   useEffect(() => {
     if (user) {
       fetchDashboardData();
+      
+      // Connect to WebSocket for real-time updates
+      const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');
+      
+      // Join professor dashboard room
+      socket.emit('join-professor-dashboard', user.id);
+      
+      // Listen for attendance updates
+      socket.on('dashboard-attendance-update', (data) => {
+        console.log('📊 Received attendance update:', data);
+        
+        // Update the classes state with new attendance data
+        setMyClasses((prevClasses: ClassData[]) => 
+          prevClasses.map((cls: ClassData) => {
+            // Find if this class has an active session matching the updated session
+            const hasActiveSession = activeSessions.some(session => 
+              session.id === data.sessionId && 
+              session.class_code === cls.code
+            );
+            
+            if (hasActiveSession) {
+              // Update attendance rate for this class
+              return {
+                ...cls,
+                attendance_rate: data.attendanceRate
+              };
+            }
+            return cls;
+          })
+        );
+        
+        // Update active sessions if needed
+        setActiveSessions(prevSessions =>
+          prevSessions.map(session => {
+            if (session.id === data.sessionId) {
+              return {
+                ...session,
+                present_count: data.attendanceCount,
+                attendance_rate: data.attendanceRate
+              };
+            }
+            return session;
+          })
+        );
+      });
+      
+      return () => {
+        socket.disconnect();
+      };
     }
   }, [user]);
 
@@ -445,6 +497,26 @@ function ProfessorDashboardContent() {
     }
   };
 
+  const startSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sessions/${sessionId}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) throw new Error('Failed to start session');
+      
+      // Refresh dashboard data to update status
+      await fetchDashboardData();
+      
+      // Navigate to active session page
+      window.location.href = `/professor/sessions/active/${sessionId}`;
+    } catch (error) {
+      console.error('Error starting session:', error);
+      alert('Failed to start session. Please try again.');
+    }
+  };
+
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
@@ -690,71 +762,86 @@ function ProfessorDashboardContent() {
                   {todayClasses.map((classData) => (
                     <div
                       key={classData.id}
-                      className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
-                        classData.status === 'active' 
-                          ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900 dark:to-emerald-800 border-emerald-200 dark:border-emerald-700' 
-                          : classData.status === 'upcoming'
-                          ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 border-blue-200 dark:border-blue-700'
-                          : 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600'
-                      }`}
+                      className="p-4 rounded-xl border-2 bg-gradient-to-br from-blue-50/50 to-indigo-50/30 dark:from-blue-900/20 dark:to-indigo-900/10 border-blue-100 dark:border-blue-800/50 hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-700 transition-all duration-200"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className={`w-3 h-3 rounded-full ${
-                            classData.status === 'active' ? 'bg-emerald-500 animate-pulse' :
-                            classData.status === 'upcoming' ? 'bg-blue-500' : 'bg-slate-400'
-                          }`}></div>
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                                {classData.code}
-                              </h3>
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
-                                classData.status === 'active' 
-                                  ? 'bg-emerald-500 text-white' 
-                                  : classData.status === 'upcoming'
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-slate-500 text-white'
-                              }`}>
-                                {classData.status}
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Left Side - Class Info */}
+                        <div className="flex-1 space-y-2">
+                          {/* Class Code and Status Badge */}
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${
+                              classData.status === 'active' ? 'bg-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50' :
+                              classData.status === 'upcoming' ? 'bg-blue-500 shadow-lg shadow-blue-500/50' : 'bg-slate-400'
+                            }`}></div>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                              {classData.code}
+                            </h3>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              classData.status === 'active' 
+                                ? 'bg-emerald-500 text-white' 
+                                : classData.status === 'upcoming'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-slate-500 text-white'
+                            }`}>
+                              {classData.status}
+                            </span>
+                          </div>
+
+                          {/* Class Name */}
+                          <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            {classData.name}
+                          </h4>
+
+                          {/* Schedule and Students Info */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                              <span className="font-medium">
+                                {classData.days_of_week?.join(', ') || 'No schedule'}
+                              </span>
+                              <span className="text-slate-400 dark:text-slate-500">•</span>
+                              <span className="font-semibold">
+                                {classData.start_time} - {classData.end_time}
                               </span>
                             </div>
-                            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                              {classData.name}
-                            </h4>
-                            <div className="flex items-center space-x-4 text-xs text-slate-600 dark:text-slate-400">
-                              <span className="flex items-center">
-                                <Clock className="w-3 h-3 mr-1" />
-                                {classData.days_of_week?.join(', ') || 'No schedule'} • {classData.start_time} - {classData.end_time}
+                            <div className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                              <span className="font-semibold">
+                                {classData.enrolled_students}/{classData.max_students}
                               </span>
-                              <span className="flex items-center">
-                                <Users className="w-3 h-3 mr-1" />
-                                {classData.enrolled_students}/{classData.max_students} students
-                              </span>
+                              <span className="font-medium">students</span>
                             </div>
                           </div>
                         </div>
                         
-                        <div className="flex items-center space-x-3">
-                          <div className="text-right">
-                            <p className={`text-xl font-bold ${getAttendanceColor(classData.attendance_rate)}`}>
-                              {classData.attendance_rate}%
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Attendance</p>
+                        {/* Right Side - Attendance and Action Button Stacked */}
+                        <div className="flex flex-col gap-2">
+                          {/* Attendance Badge */}
+                          <div className="flex items-center gap-2 px-3 py-2 min-w-[140px] bg-slate-800/50 dark:bg-slate-700/50 rounded-lg border border-slate-700 dark:border-slate-600">
+                            <BarChart3 className={`w-5 h-5 ${getAttendanceColor(classData.attendance_rate)}`} />
+                            <div className="flex-1 text-center">
+                              <p className={`text-xl font-bold leading-none ${getAttendanceColor(classData.attendance_rate)}`}>
+                                {classData.attendance_rate}%
+                              </p>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Attendance</p>
+                            </div>
                           </div>
-                          {classData.status === 'upcoming' && (
-                            <Link href={`/professor/sessions/new?classId=${classData.id}`}>
-                              <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2 rounded-lg">
-                                <Play className="w-4 h-4 mr-1" />
-                                Start
-                              </Button>
-                            </Link>
+
+                          {/* Action Button */}
+                          {classData.status === 'upcoming' && classData.today_session_id && (
+                            <Button 
+                              onClick={() => startSession(classData.today_session_id!)}
+                              className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                            >
+                              <Play className="w-4 h-4 fill-white" />
+                              <span className="font-semibold text-sm">Start</span>
+                            </Button>
                           )}
-                          {classData.status === 'active' && (
-                            <Link href={`/professor/sessions/active/${classData.id}`}>
-                              <Button className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-lg">
-                                <Eye className="w-4 h-4 mr-1" />
-                                View
+                          {classData.status === 'active' && classData.active_session_id && (
+                            <Link href={`/professor/sessions/active/${classData.active_session_id}`}>
+                              <Button className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
+                                <Eye className="w-4 h-4" />
+                                <span className="font-semibold text-sm">View</span>
                               </Button>
                             </Link>
                           )}

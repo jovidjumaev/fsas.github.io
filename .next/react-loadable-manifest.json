@@ -35,6 +35,12 @@
       "static/chunks/_app-pages-browser_src_lib_password-change-service_ts.js"
     ]
   },
+  "app/professor/sessions/active/[sessionId]/page.tsx -> xlsx": {
+    "id": "app/professor/sessions/active/[sessionId]/page.tsx -> xlsx",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_xlsx_xlsx_mjs.js"
+    ]
+  },
   "app/student/dashboard/page.tsx -> @/lib/name-change-service": {
     "id": "app/student/dashboard/page.tsx -> @/lib/name-change-service",
     "files": []

@@ -11,7 +11,7 @@ class QRCodeGenerator {
   }
   
   static get QR_EXPIRY_SECONDS() {
-    return 30; // 30 seconds
+    return 30; // 30 seconds - security feature to prevent cheating
   }
 
   /**
@@ -45,7 +45,7 @@ class QRCodeGenerator {
 
       // Create a URL that students can scan directly
       // Use the computer's IP address instead of localhost for phone access
-      const baseUrl = process.env.NEXT_PUBLIC_QR_BASE_URL || 'http://11.35.13.4:3000';
+      const baseUrl = 'http://10.102.42.149:3000'; // Force correct IP for local testing
       const qrUrl = `${baseUrl}/student/scan?data=${encodeURIComponent(JSON.stringify(qrData))}`;
 
       // Generate QR code image with the URL

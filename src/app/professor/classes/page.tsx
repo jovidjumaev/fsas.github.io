@@ -24,49 +24,32 @@ import { supabase } from '@/lib/supabase';
 
 interface ClassData {
   id: string;
-  course_id: string;
-  professor_id: string;
-  academic_period_id: string;
-  section_number: number;
+  code: string;
+  name: string;
+  description: string;
+  credits: number;
   class_code: string;
   days_of_week: string[];
   start_time: string;
   end_time: string;
-  first_class_date: string;
-  last_class_date: string;
   room_location: string;
   max_students: number;
-  current_enrollment: number;
+  enrolled_students: number;
   capacity_percentage: number;
+  attendance_rate: number;
+  total_sessions: number;
+  active_sessions: number;
+  academic_period: string;
   is_active: boolean;
-  status: 'active' | 'inactive' | 'completed';
-  is_pinned: boolean;
-  enrollment_deadline: string;
   created_at: string;
-  updated_at: string;
-  courses: {
-    code: string;
-    name: string;
-    description: string;
-    credits: number;
-    departments: {
-      code: string;
-      name: string;
-    };
-  };
-  academic_periods: {
-    name: string;
-    year: number;
-    semester: string;
-  };
+  // Legacy fields for compatibility
+  status?: 'active' | 'inactive' | 'completed';
+  is_pinned?: boolean;
+  performance_grade?: 'excellent' | 'good' | 'average' | 'needs_attention';
   next_session?: {
     date: string;
     start_time: string;
   };
-  attendance_rate?: number;
-  total_sessions?: number;
-  active_sessions?: number;
-  performance_grade?: 'excellent' | 'good' | 'average' | 'needs_attention';
 }
 
 interface AvailableCourse {
@@ -111,7 +94,7 @@ function ClassesPageContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'code' | 'enrollment' | 'attendance' | 'created'>('name');
-  const [filterBy, setFilterBy] = useState<'all' | 'active' | 'inactive' | 'high_performance' | 'needs_attention'>('all');
+  const [filterBy, setFilterBy] = useState<'all' | 'active' | 'inactive' | 'completed' | 'high_performance' | 'needs_attention'>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -248,7 +231,7 @@ function ClassesPageContent() {
     try {
       if (!user?.id) return;
       
-      const response = await fetch(`http://localhost:3001/api/professors/${user.id}/class-instances`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/professors/${user.id}/classes`);
       if (!response.ok) {
         throw new Error('Failed to fetch classes');
       }
@@ -306,9 +289,9 @@ function ClassesPageContent() {
     // Apply search filter
     if (searchQuery) {
       filtered = filtered.filter(cls =>
-        cls.courses?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.courses?.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.courses?.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cls.class_code.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
@@ -321,6 +304,8 @@ function ClassesPageContent() {
             return cls.status === 'active';
           case 'inactive':
             return cls.status === 'inactive';
+          case 'completed':
+            return cls.status === 'completed';
           case 'high_performance':
             return (cls.attendance_rate || 0) >= 85;
           case 'needs_attention':
@@ -339,11 +324,11 @@ function ClassesPageContent() {
       
       switch (sortBy) {
         case 'name':
-          return (a.courses?.name || '').localeCompare(b.courses?.name || '');
+          return (a.name || '').localeCompare(b.name || '');
         case 'code':
-          return (a.courses?.code || '').localeCompare(b.courses?.code || '');
+          return (a.code || '').localeCompare(b.code || '');
         case 'enrollment':
-          return (b.current_enrollment || 0) - (a.current_enrollment || 0);
+          return (b.enrolled_students || 0) - (a.enrolled_students || 0);
         case 'attendance':
           return (b.attendance_rate || 0) - (a.attendance_rate || 0);
         case 'created':
@@ -948,6 +933,7 @@ function ClassesPageContent() {
                 <option value="all">All Classes</option>
                 <option value="active">Active Only</option>
                 <option value="inactive">Inactive Only</option>
+                <option value="completed">Completed Only</option>
                 <option value="high_performance">High Performance</option>
                 <option value="needs_attention">Needs Attention</option>
               </select>
@@ -1000,7 +986,7 @@ function ClassesPageContent() {
                       <div>
                         <div className="flex items-center space-x-2">
                           <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                            {classData.courses?.code}
+                            {classData.code}
                           </h3>
                           {classData.is_pinned && (
                             <Pin className="w-4 h-4 text-amber-500" />
@@ -1059,7 +1045,7 @@ function ClassesPageContent() {
                           </button>
                           <button
                             onClick={() => {
-                              handleDeleteClass(classData.id, classData.courses?.name || 'Unknown Class');
+                              handleDeleteClass(classData.id, classData.name || 'Unknown Class');
                               setOpenMenuId(null);
                             }}
                             className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center"
@@ -1075,10 +1061,10 @@ function ClassesPageContent() {
                   {/* Class Name & Description */}
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2">
-                      {classData.courses?.name}
+                      {classData.name}
                     </h4>
                     <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
-                      {classData.courses?.description}
+                      {classData.description}
                     </p>
                   </div>
 
@@ -1105,11 +1091,11 @@ function ClassesPageContent() {
                     </div>
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <Users className="w-4 h-4 mr-2" />
-                      {classData.current_enrollment}/{classData.max_students} Students
+                      {classData.enrolled_students}/{classData.max_students} Students
                     </div>
                     <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                       <GraduationCap className="w-4 h-4 mr-2" />
-                      {classData.courses?.credits} Credits
+                      {classData.credits} Credits
                     </div>
                   </div>
 

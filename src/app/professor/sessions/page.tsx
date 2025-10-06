@@ -35,6 +35,7 @@ interface SessionData {
   total_enrolled: number;
   notes?: string;
   created_at: string;
+  updated_at?: string;
   class_instances: {
     id: string;
     room_location: string;
@@ -244,17 +245,20 @@ function SessionsPageContent() {
     
     switch (activeTab) {
       case 'today':
+        // Only sessions for today (regardless of status)
         filtered = filtered.filter(session => session.date === today);
         break;
       case 'active':
         filtered = filtered.filter(session => session.status === 'active');
         break;
       case 'upcoming':
+        // Future sessions only (excluding today)
         filtered = filtered.filter(session => 
-          session.status === 'scheduled' && (session.date > today || session.date === today)
+          session.status === 'scheduled' && session.date > today
         );
         break;
       case 'completed':
+        // Completed sessions from any date
         filtered = filtered.filter(session => session.status === 'completed');
         break;
       case 'all':
@@ -262,11 +266,20 @@ function SessionsPageContent() {
         break;
     }
 
-    // Sort by date and time
+    // Sort based on tab type
     return filtered.sort((a, b) => {
-      const aDateTime = new Date(`${a.date}T${a.start_time}`);
-      const bDateTime = new Date(`${b.date}T${b.start_time}`);
-      return aDateTime.getTime() - bDateTime.getTime();
+      if (activeTab === 'completed') {
+        // For completed sessions, sort by completion date (most recent first)
+        // Use updated_at as completion time, fallback to date if not available
+        const aCompletedTime = new Date(a.updated_at || `${a.date}T${a.end_time}`);
+        const bCompletedTime = new Date(b.updated_at || `${b.date}T${b.end_time}`);
+        return bCompletedTime.getTime() - aCompletedTime.getTime(); // Descending order
+      } else {
+        // For all other tabs, sort by session date and time (ascending order)
+        const aDateTime = new Date(`${a.date}T${a.start_time}`);
+        const bDateTime = new Date(`${b.date}T${b.start_time}`);
+        return aDateTime.getTime() - bDateTime.getTime();
+      }
     });
   }, [sessions, activeTab, searchTerm]);
 
@@ -307,13 +320,16 @@ function SessionsPageContent() {
   }, []);
 
   // Tab configuration
-  const tabs = [
-    { id: 'today' as TabType, label: 'Today', icon: Today, count: sessions.filter(s => s.date === new Date().toISOString().split('T')[0]).length },
-    { id: 'active' as TabType, label: 'Active', icon: Activity, count: sessions.filter(s => s.status === 'active').length },
-    { id: 'upcoming' as TabType, label: 'Upcoming', icon: CalendarDays, count: sessions.filter(s => s.date > new Date().toISOString().split('T')[0] || (s.date === new Date().toISOString().split('T')[0] && s.status === 'scheduled')).length },
-    { id: 'completed' as TabType, label: 'Completed', icon: History, count: sessions.filter(s => s.status === 'completed').length },
-    { id: 'all' as TabType, label: 'All Sessions', icon: BarChart3, count: sessions.length }
-  ];
+  const tabs = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return [
+      { id: 'today' as TabType, label: 'Today', icon: Today, count: sessions.filter(s => s.date === today).length },
+      { id: 'active' as TabType, label: 'Active', icon: Activity, count: sessions.filter(s => s.status === 'active').length },
+      { id: 'upcoming' as TabType, label: 'Upcoming', icon: CalendarDays, count: sessions.filter(s => s.status === 'scheduled' && s.date > today).length },
+      { id: 'completed' as TabType, label: 'Completed', icon: History, count: sessions.filter(s => s.status === 'completed').length },
+      { id: 'all' as TabType, label: 'All Sessions', icon: BarChart3, count: sessions.length }
+    ];
+  }, [sessions]);
 
   if (isLoading) {
     return (
@@ -464,7 +480,8 @@ function SessionsPageContent() {
             {filteredSessions.map((session) => {
               const status = getSessionStatus(session);
               const StatusIcon = status.icon;
-              const isToday = session.date === new Date().toISOString().split('T')[0];
+              const today = new Date().toISOString().split('T')[0];
+              const isToday = session.date === today;
               const canStart = session.status === 'scheduled';
               
               return (
@@ -521,7 +538,7 @@ function SessionsPageContent() {
                     <div className="space-y-2 mb-4">
                       <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
                         <Calendar className="w-4 h-4 mr-2" />
-                        Session {session.session_number} - {new Date(session.date).toLocaleDateString('en-US', { 
+                        Session {session.session_number} - {new Date(session.date + 'T00:00:00').toLocaleDateString('en-US', { 
                           weekday: 'short', 
                           month: 'short', 
                           day: 'numeric' 

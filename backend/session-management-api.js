@@ -41,9 +41,9 @@ const generateSessionTemplates = async (classInstanceId) => {
     const startTime = classInstance.start_time;
     const endTime = classInstance.end_time;
     
-    // Get academic period dates (treat as UTC date-only to avoid timezone drift)
-    const periodStart = new Date(`${classInstance.first_class_date}T00:00:00Z`);
-    const periodEnd = new Date(`${classInstance.last_class_date}T00:00:00Z`);
+    // Get academic period dates (use local timezone to avoid date shifting)
+    const periodStart = new Date(classInstance.first_class_date + 'T00:00:00');
+    const periodEnd = new Date(classInstance.last_class_date + 'T00:00:00');
     
     // Find the first actual class day that matches the schedule
     let firstClassDate = new Date(periodStart);
@@ -51,13 +51,12 @@ const generateSessionTemplates = async (classInstanceId) => {
     
     // Look for the first day that matches the class schedule
     while (firstClassDate <= periodEnd && !foundFirstClass) {
-      const dayIndex = firstClassDate.getUTCDay();
-      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayIndex];
+      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][firstClassDate.getDay()];
       if (daysOfWeek.includes(dayName)) {
         foundFirstClass = true;
         break;
       }
-      firstClassDate.setUTCDate(firstClassDate.getUTCDate() + 1);
+      firstClassDate.setDate(firstClassDate.getDate() + 1);
     }
     
     if (!foundFirstClass) {
@@ -70,8 +69,7 @@ const generateSessionTemplates = async (classInstanceId) => {
     let currentDate = new Date(firstClassDate);
     
     while (currentDate <= periodEnd) {
-      const dayIndex = currentDate.getUTCDay();
-      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayIndex];
+      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][currentDate.getDay()];
       
       if (daysOfWeek.includes(dayName)) {
         sessions.push({
@@ -88,7 +86,7 @@ const generateSessionTemplates = async (classInstanceId) => {
         });
       }
       
-      currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+      currentDate.setDate(currentDate.getDate() + 1);
     }
     
     // Insert sessions into database
@@ -180,6 +178,14 @@ router.get('/api/professors/:professorId/sessions', async (req, res) => {
       .order('start_time', { ascending: true });
     
     if (error) throw error;
+    
+    // Debug: Log session dates
+    const today = new Date().toISOString().split('T')[0];
+    console.log('🔍 Backend Session Debug:');
+    console.log('  Today\'s date:', today);
+    console.log('  Total sessions found:', sessions.length);
+    console.log('  Session dates:', sessions.map(s => ({ id: s.id, date: s.date, code: s.class_instances?.courses?.code })));
+    console.log('  Sessions matching today:', sessions.filter(s => s.date === today).length);
     
     // Get current enrollment and attendance counts for each session
     const sessionsWithCounts = await Promise.all(sessions.map(async (session) => {
@@ -295,7 +301,7 @@ router.post('/api/sessions/:sessionId/activate', async (req, res) => {
         qr_secret: qrData.secret,
         qr_expires_at: qrData.expires_at,
         notes: notes || null,
-        activated_at: new Date().toISOString() // Track when session was activated
+        updated_at: new Date().toISOString() // Track activation time
       })
       .eq('id', sessionId)
       .select()
@@ -908,7 +914,7 @@ const startQRCodeRotation = (sessionId) => {
     } catch (error) {
       console.error('❌ Error rotating QR code:', error);
     }
-  }, 30000); // 30 seconds
+  }, 30000); // 30 seconds - rotate QR codes every 30 seconds for security
   
   activeRotations.set(sessionId, rotationInterval);
 };

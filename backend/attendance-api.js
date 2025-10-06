@@ -61,6 +61,7 @@ router.post('/api/attendance/scan', async (req, res) => {
         *,
         class_instances!inner(
           id,
+          professor_id,
           courses(code, name),
           academic_periods(name)
         )
@@ -125,11 +126,12 @@ router.post('/api/attendance/scan', async (req, res) => {
       });
     }
     
-    // Determine if student is late (more than 15 minutes after session start)
+    // Determine if student is late (more than 5 minutes after class start time)
+    // Note: This is based on the scheduled class start time, NOT when the professor started the session
     const sessionStartTime = new Date(`${session.date}T${session.start_time}`);
     const currentTime = new Date();
     const minutesLate = Math.floor((currentTime - sessionStartTime) / (1000 * 60));
-    const isLate = minutesLate > 15;
+    const isLate = minutesLate > 5;
     
     // Record attendance
     const { data: attendanceRecord, error: recordError } = await supabase
@@ -171,24 +173,50 @@ router.post('/api/attendance/scan', async (req, res) => {
     
     // Emit real-time update to professor
     if (global.io) {
+      const professorId = session.class_instances.professor_id;
+      
+      // Get current attendance count for this session
+      const { data: attendanceRecords } = await supabase
+        .from('attendance_records')
+        .select('status')
+        .eq('session_id', sessionId);
+      
+      const attendedCount = attendanceRecords ? 
+        attendanceRecords.filter(a => ['present', 'late', 'excused'].includes(a.status)).length : 0;
+      const totalStudents = attendanceRecords ? attendanceRecords.length : 0;
+      const attendanceRate = totalStudents > 0 ? Math.round((attendedCount / totalStudents) * 100) : 0;
+      
+      // Broadcast to session room
       global.io.to(`session-${sessionId}`).emit('attendance_update', {
         sessionId,
         studentId,
         status: attendanceRecord.status,
         scanned_at: attendanceRecord.scanned_at,
-        attendanceCount: session.attendance_count + 1
+        attendanceCount: attendedCount,
+        totalStudents,
+        attendanceRate
       });
       
-      console.log('📡 Real-time attendance update emitted to session room');
+      // Broadcast to professor dashboard
+      global.io.to(`professor-${professorId}`).emit('dashboard-attendance-update', {
+        sessionId,
+        attendanceCount: attendedCount,
+        totalStudents,
+        attendanceRate,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('📡 Real-time attendance update emitted to session room and professor dashboard');
     }
     
     res.json({
       success: true,
-      message: `Attendance marked successfully! ${isLate ? 'You are marked as late.' : 'You are present.'}`,
+      message: `Attendance marked successfully! ${isLate ? `You are marked as late (${minutesLate} minutes after class start).` : 'You are present.'}`,
       attendance: {
         id: attendanceRecord.id,
         scanned_at: attendanceRecord.scanned_at,
         status: attendanceRecord.status,
+        minutes_late: minutesLate,
         session: {
           id: session.id,
           class_code: session.class_instances.courses.code,

@@ -234,7 +234,8 @@ router.get('/api/class-instances/:instanceId/sessions', async (req, res) => {
   try {
     const { instanceId } = req.params;
     
-    const { data, error } = await supabase
+    // Get sessions
+    const { data: sessions, error } = await supabase
       .from('class_sessions')
       .select('*')
       .eq('class_instance_id', instanceId)
@@ -243,10 +244,48 @@ router.get('/api/class-instances/:instanceId/sessions', async (req, res) => {
     
     if (error) throw error;
     
+    // Get enrolled students count for this class
+    const { data: enrollments, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('class_instance_id', instanceId)
+      .eq('status', 'active');
+    
+    if (enrollmentError) {
+      console.error('Error fetching enrollments:', enrollmentError);
+    }
+    
+    const totalEnrolled = enrollments?.length || 0;
+    
+    // Calculate attendance counts for each session
+    const sessionsWithAttendance = await Promise.all(
+      sessions.map(async (session) => {
+        // Get attendance records for this session
+        const { data: attendanceRecords, error: attendanceError } = await supabase
+          .from('attendance_records')
+          .select('status')
+          .eq('session_id', session.id);
+        
+        if (attendanceError) {
+          console.error('Error fetching attendance records for session', session.id, attendanceError);
+        }
+        
+        // Count attended students (present + late + excused)
+        const attendedCount = attendanceRecords ? 
+          attendanceRecords.filter(a => ['present', 'late', 'excused'].includes(a.status)).length : 0;
+        
+        return {
+          ...session,
+          attendance_count: attendedCount,
+          total_enrolled: totalEnrolled
+        };
+      })
+    );
+    
     res.json({
       success: true,
-      data,
-      count: data.length
+      data: sessionsWithAttendance,
+      count: sessionsWithAttendance.length
     });
   } catch (error) {
     res.status(500).json({
@@ -422,7 +461,7 @@ router.get('/api/sessions/:sessionId/attendance', async (req, res) => {
 router.post('/api/sessions/:sessionId/attendance', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { student_id, status, device_fingerprint, ip_address, qr_secret_used } = req.body;
+    const { student_id, device_fingerprint, ip_address, qr_secret_used } = req.body;
     
     // Verify session is active
     const { data: session, error: sessionError } = await supabase
@@ -439,12 +478,15 @@ router.post('/api/sessions/:sessionId/attendance', async (req, res) => {
       });
     }
     
-    // Calculate minutes late if status is 'late'
-    let minutesLate = 0;
-    if (status === 'late') {
-      const sessionStart = new Date(`${session.date}T${session.start_time}`);
-      const now = new Date();
-      minutesLate = Math.max(0, Math.floor((now - sessionStart) / (1000 * 60)));
+    // Calculate status and minutes late based on class start time
+    // Note: This is based on the scheduled class start time, NOT when the professor started the session
+    const sessionStart = new Date(`${session.date}T${session.start_time}`);
+    const now = new Date();
+    const minutesLate = Math.max(0, Math.floor((now - sessionStart) / (1000 * 60)));
+    
+    let status = 'present';
+    if (minutesLate > 5) {
+      status = 'late';
     }
     
     const { data, error } = await supabase
@@ -452,7 +494,7 @@ router.post('/api/sessions/:sessionId/attendance', async (req, res) => {
       .insert({
         session_id: sessionId,
         student_id,
-        status: status || 'present',
+        status: status,
         minutes_late: minutesLate,
         device_fingerprint,
         ip_address,

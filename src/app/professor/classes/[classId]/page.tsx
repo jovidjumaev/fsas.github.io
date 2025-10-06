@@ -1447,7 +1447,7 @@ function ClassManagementPageContent() {
                               : 'bg-slate-500 text-white'
                           }`}>
                             <span className="text-xs font-bold text-center leading-tight">
-                              {new Date(session.date).toLocaleDateString('en-US', { 
+                              {new Date(session.date + 'T00:00:00').toLocaleDateString('en-US', { 
                                 month: 'numeric', 
                                 day: 'numeric' 
                               })}
@@ -1456,7 +1456,7 @@ function ClassManagementPageContent() {
                             <div>
                               <div className="flex items-center space-x-2 mb-1">
                                 <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                  {new Date(session.date).toLocaleDateString('en-US', { 
+                                  {new Date(session.date + 'T00:00:00').toLocaleDateString('en-US', { 
                                     month: 'short', 
                                     day: 'numeric', 
                                     year: 'numeric' 
@@ -1480,7 +1480,7 @@ function ClassManagementPageContent() {
                             <div className="flex items-center space-x-4 text-sm text-slate-600 dark:text-slate-400">
                               <div className="flex items-center">
                                 <Calendar className="w-4 h-4 mr-1" />
-                                {new Date(session.date).toLocaleDateString()}
+                                {new Date(session.date + 'T00:00:00').toLocaleDateString()}
                               </div>
                               <div className="flex items-center">
                                 <Clock className="w-4 h-4 mr-1" />
@@ -1633,7 +1633,6 @@ function ClassManagementPageContent() {
                         value={analyticsSearchQuery}
                         onChange={(e) => setAnalyticsSearchQuery(e.target.value)}
                         className="pl-10 w-64"
-                        size="sm"
                       />
                     </div>
                   </div>

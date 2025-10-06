@@ -356,11 +356,12 @@ app.get('/api/professors/:professorId/classes', async (req, res) => {
   try {
     const { professorId } = req.params;
     
-    const { data: classes, error } = await supabase
-      .from('classes')
+    // Get class instances (using new schema)
+    const { data: classInstances, error } = await supabase
+      .from('class_instances')
       .select(`
         *,
-        departments(name, code),
+        courses(code, name, description, credits),
         academic_periods(name, year, semester)
       `)
       .eq('professor_id', professorId)
@@ -368,41 +369,91 @@ app.get('/api/professors/:professorId/classes', async (req, res) => {
     
     if (error) throw error;
     
-    // Get enrollment counts for each class
-    const classesWithEnrollments = await Promise.all(
-      classes.map(async (classItem) => {
+    // Get enrollment counts and attendance rates for each class
+    const classesWithStats = await Promise.all(
+      classInstances.map(async (classInstance) => {
+        // Get enrollments
         const { data: enrollments, error: enrollmentError } = await supabase
           .from('enrollments')
           .select('id')
-          .eq('class_id', classItem.id)
+          .eq('class_instance_id', classInstance.id)
           .eq('status', 'active');
         
         if (enrollmentError) {
-          console.error('Error fetching enrollments for class', classItem.id, enrollmentError);
-          return {
-            ...classItem,
-            enrolled_students: 0,
-            capacity_percentage: 0
-          };
+          console.error('Error fetching enrollments for class', classInstance.id, enrollmentError);
         }
         
-        const enrolledCount = enrollments.length;
-        const capacityPercentage = classItem.max_students > 0 
-          ? Math.round((enrolledCount / classItem.max_students) * 100) 
+        const enrolledCount = enrollments?.length || 0;
+        const capacityPercentage = classInstance.max_students > 0 
+          ? Math.round((enrolledCount / classInstance.max_students) * 100) 
           : 0;
         
+        // Get all sessions for this class (active + completed)
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('class_sessions')
+          .select('id, status')
+          .eq('class_instance_id', classInstance.id);
+        
+        if (sessionsError) {
+          console.error('Error fetching sessions for class', classInstance.id, sessionsError);
+        }
+        
+        // Calculate attendance rate from all sessions
+        let attendanceRate = 0;
+        let totalSessions = 0;
+        let activeSessions = 0;
+        
+        if (sessions && sessions.length > 0) {
+          const allSessions = sessions;
+          const activeSessionsList = sessions.filter(s => s.status === 'active');
+          const completedSessions = sessions.filter(s => s.status === 'completed');
+          
+          totalSessions = allSessions.length;
+          activeSessions = activeSessionsList.length;
+          
+          // Get attendance records for all sessions
+          const { data: attendanceRecords, error: attendanceError } = await supabase
+            .from('attendance_records')
+            .select('status')
+            .in('session_id', allSessions.map(s => s.id));
+          
+          if (!attendanceError && attendanceRecords && attendanceRecords.length > 0) {
+            const attendedCount = attendanceRecords.filter(a => 
+              ['present', 'late', 'excused'].includes(a.status)
+            ).length;
+            attendanceRate = Math.round((attendedCount / attendanceRecords.length) * 100);
+          }
+        }
+        
         return {
-          ...classItem,
+          id: classInstance.id,
+          code: classInstance.courses?.code || 'Unknown',
+          name: classInstance.courses?.name || 'Unknown Class',
+          description: classInstance.courses?.description || '',
+          credits: classInstance.courses?.credits || 0,
+          class_code: classInstance.class_code,
+          days_of_week: classInstance.days_of_week,
+          start_time: classInstance.start_time,
+          end_time: classInstance.end_time,
+          room_location: classInstance.room_location,
+          max_students: classInstance.max_students,
           enrolled_students: enrolledCount,
-          capacity_percentage: capacityPercentage
+          capacity_percentage: capacityPercentage,
+          attendance_rate: attendanceRate,
+          total_sessions: totalSessions,
+          active_sessions: activeSessions,
+          academic_period: classInstance.academic_periods?.name || 'Unknown Period',
+          is_active: classInstance.is_active,
+          status: classInstance.status,
+          created_at: classInstance.created_at
         };
       })
     );
     
     res.json({
       success: true,
-      data: classesWithEnrollments,
-      count: classesWithEnrollments.length
+      data: classesWithStats,
+      count: classesWithStats.length
     });
   } catch (error) {
     res.status(500).json({
@@ -697,7 +748,7 @@ app.get('/api/sessions/:sessionId/attendance', async (req, res) => {
     const { sessionId } = req.params;
     
     const { data, error } = await supabase
-      .from('attendance')
+      .from('attendance_records')
       .select(`
         *,
         students!inner(
@@ -1071,8 +1122,8 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
       });
     }
     
-    // Get active sessions
-    const { data: activeSessions, error: sessionsError } = await supabase
+    // Get all sessions (for finding today's sessions)
+    const { data: allSessions, error: allSessionsError } = await supabase
       .from('class_sessions')
       .select(`
         id,
@@ -1081,18 +1132,21 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
         start_time,
         end_time,
         is_active,
+        status,
         qr_expires_at
       `)
-      .in('class_instance_id', classInstances.map(c => c.id))
-      .eq('is_active', true);
+      .in('class_instance_id', classInstances.map(c => c.id));
     
-    if (sessionsError) {
-      console.error('Error fetching sessions:', sessionsError);
+    if (allSessionsError) {
+      console.error('Error fetching all sessions:', allSessionsError);
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch sessions'
       });
     }
+    
+    // Filter active sessions
+    const activeSessions = allSessions.filter(s => s.is_active === true);
     
     // Helper function to check if a class meets on a specific day
     const isClassToday = (classInstance) => {
@@ -1164,19 +1218,49 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
       const classCompletedSessions = completedSessions.filter(s => s.class_instance_id === instance.id);
       const isToday = isClassToday(instance);
       
-      // Calculate class-specific attendance rate
+      // Calculate class-specific attendance rate (including live sessions)
       let classAttendanceRate = 0;
-      if (classCompletedSessions.length > 0) {
+      const allClassSessions = [...classActiveSessions, ...classCompletedSessions];
+      
+      if (allClassSessions.length > 0) {
         const { data: classAttendanceData } = await supabase
           .from('attendance_records')
           .select('status')
-          .in('session_id', classCompletedSessions.map(s => s.id));
+          .in('session_id', allClassSessions.map(s => s.id));
         
         if (classAttendanceData && classAttendanceData.length > 0) {
           const attendedCount = classAttendanceData.filter(a => 
             ['present', 'late', 'excused'].includes(a.status)
           ).length;
           classAttendanceRate = Math.round((attendedCount / classAttendanceData.length) * 100);
+        }
+      }
+      
+      // Find today's session if this is a today class
+      const today = new Date().toISOString().split('T')[0];
+      const todaySession = isToday ? allSessions.find(s => 
+        s.class_instance_id === instance.id && 
+        s.date === today &&
+        s.status === 'scheduled'
+      ) : null;
+      
+      const activeSession = classActiveSessions.length > 0 ? classActiveSessions[0] : null;
+      
+      // Determine status based on session state and time
+      let status = 'upcoming';
+      if (classActiveSessions.length > 0) {
+        status = 'active';
+      } else if (isToday) {
+        // Check if today's session time has passed
+        const now = new Date();
+        const todaySessionTime = new Date(`${today}T${instance.start_time}`);
+        const sessionEndTime = new Date(`${today}T${instance.end_time}`);
+        
+        if (now > sessionEndTime) {
+          status = 'completed';
+        } else if (now > todaySessionTime) {
+          // Session time has started but no active session
+          status = 'completed';
         }
       }
       
@@ -1195,9 +1279,12 @@ app.get('/api/professors/:professorId/dashboard', async (req, res) => {
         totalSessions: classActiveSessions.length + classCompletedSessions.length,
         completedSessions: classCompletedSessions.length,
         averageAttendance: classAttendanceRate,
-        status: classActiveSessions.length > 0 ? 'active' : 'upcoming',
+        attendance_rate: classAttendanceRate, // Add attendance_rate for frontend compatibility
+        status: status,
         isToday: isToday,
-        academic_period: instance.academic_periods?.name || 'Unknown Period'
+        academic_period: instance.academic_periods?.name || 'Unknown Period',
+        today_session_id: todaySession?.id || null, // Add session ID for today's session
+        active_session_id: activeSession?.id || null // Add active session ID if active
       };
     }));
     
@@ -1258,6 +1345,12 @@ io.on('connection', (socket) => {
     console.log(`Client ${socket.id} joined session ${sessionId}`);
   });
   
+  // Join professor dashboard room for live updates
+  socket.on('join-professor-dashboard', (professorId) => {
+    socket.join(`professor-${professorId}`);
+    console.log(`Client ${socket.id} joined professor dashboard ${professorId}`);
+  });
+  
   socket.on('leave-session', (sessionId) => {
     socket.leave(`session-${sessionId}`);
     console.log(`Client ${socket.id} left session ${sessionId}`);
@@ -1270,7 +1363,19 @@ io.on('connection', (socket) => {
 
 // Helper function to broadcast attendance updates
 function broadcastAttendanceUpdate(sessionId, attendanceData) {
+  // Broadcast to session room
   io.to(`session-${sessionId}`).emit('attendance-update', attendanceData);
+  
+  // Also broadcast to professor dashboard if we have professor info
+  if (attendanceData.professorId) {
+    io.to(`professor-${attendanceData.professorId}`).emit('dashboard-attendance-update', {
+      sessionId,
+      attendanceCount: attendanceData.attendanceCount,
+      totalStudents: attendanceData.totalStudents,
+      attendanceRate: attendanceData.attendanceRate,
+      timestamp: new Date().toISOString()
+    });
+  }
 }
 
 // =====================================================
@@ -2033,7 +2138,7 @@ app.post('/api/notifications/test', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 Optimized FSAS Backend Server running on port', PORT);
   console.log('📊 Health check: http://localhost:' + PORT + '/api/health');
   console.log('🔗 Supabase connected:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);

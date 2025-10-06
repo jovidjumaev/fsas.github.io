@@ -197,7 +197,7 @@ function ActiveSessionContent() {
         late_count: 0, // Will be calculated from attendance records
         total_enrolled: session.total_enrolled || 0,
         created_at: session.created_at,
-        activated_at: session.activated_at, // Include the activation time
+        activated_at: session.updated_at, // Use updated_at as activation time
         notes: session.notes
       };
 

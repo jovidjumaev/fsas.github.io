@@ -350,11 +350,40 @@ router.get('/api/class-instances/:instanceId/sessions', async (req, res) => {
     
     if (error) throw error;
     
-    // Include attendance data if requested
-    if (include_attendance === 'true') {
-      const sessionsWithAttendance = await Promise.all(
-        sessions.map(async (session) => {
-          const { data: attendance } = await supabase
+    // Get enrolled students count for this class
+    const { data: enrollments, error: enrollmentError } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('class_instance_id', instanceId)
+      .eq('status', 'active');
+    
+    if (enrollmentError) {
+      console.error('Error fetching enrollments:', enrollmentError);
+    }
+    
+    const totalEnrolled = enrollments?.length || 0;
+    
+    // Always calculate attendance counts for each session
+    const sessionsWithAttendance = await Promise.all(
+      sessions.map(async (session) => {
+        // Get attendance records for this session
+        const { data: attendanceRecords, error: attendanceError } = await supabase
+          .from('attendance_records')
+          .select('status')
+          .eq('session_id', session.id);
+        
+        if (attendanceError) {
+          console.error('Error fetching attendance records for session', session.id, attendanceError);
+        }
+        
+        // Count attended students (present + late + excused)
+        const attendedCount = attendanceRecords ? 
+          attendanceRecords.filter(a => ['present', 'late', 'excused'].includes(a.status)).length : 0;
+        
+        // Include detailed attendance data if requested
+        let attendance = null;
+        if (include_attendance === 'true') {
+          const { data: detailedAttendance } = await supabase
             .from('attendance_records')
             .select(`
               *,
@@ -365,25 +394,23 @@ router.get('/api/class-instances/:instanceId/sessions', async (req, res) => {
             `)
             .eq('session_id', session.id);
           
-          return {
-            ...session,
-            attendance: attendance || []
-          };
-        })
-      );
-      
-      res.json({
-        success: true,
-        data: sessionsWithAttendance,
-        count: sessionsWithAttendance.length
-      });
-    } else {
-      res.json({
-        success: true,
-        data: sessions,
-        count: sessions.length
-      });
-    }
+          attendance = detailedAttendance || [];
+        }
+        
+        return {
+          ...session,
+          attendance_count: attendedCount,
+          total_enrolled: totalEnrolled,
+          ...(attendance && { attendance })
+        };
+      })
+    );
+    
+    res.json({
+      success: true,
+      data: sessionsWithAttendance,
+      count: sessionsWithAttendance.length
+    });
     
   } catch (error) {
     console.error('Error fetching sessions:', error);
@@ -756,13 +783,14 @@ router.post('/api/sessions/:sessionId/attendance', async (req, res) => {
       });
     }
     
-    // Calculate status and minutes late
+    // Calculate status and minutes late based on class start time
+    // Note: This is based on the scheduled class start time, NOT when the professor started the session
     const sessionStart = new Date(`${session.date}T${session.start_time}`);
     const now = new Date();
     const minutesLate = Math.max(0, Math.floor((now - sessionStart) / (1000 * 60)));
     
     let status = 'present';
-    if (minutesLate > 3) {
+    if (minutesLate > 5) {
       status = 'late';
     }
     
@@ -1788,6 +1816,7 @@ router.patch('/api/class-instances/:classInstanceId/status', async (req, res) =>
       .from('class_instances')
       .update({ 
         status: status,
+        is_active: status === 'active',
         updated_at: new Date().toISOString()
       })
       .eq('id', classInstanceId);
