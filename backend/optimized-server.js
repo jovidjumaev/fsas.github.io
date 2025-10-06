@@ -1832,6 +1832,175 @@ app.post('/api/classes/:classId/unenroll', async (req, res) => {
 });
 
 // =====================================================
+// NOTIFICATIONS API
+// =====================================================
+
+// Get notifications for a user
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+    
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user_id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch notifications'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: data || [],
+      count: data?.length || 0
+    });
+    
+  } catch (error) {
+    console.error('Error in notifications API:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get unread notifications count
+app.get('/api/notifications/unread-count', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+    
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user_id)
+      .eq('is_read', false);
+    
+    if (error) {
+      console.error('Error fetching unread count:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch unread count'
+      });
+    }
+    
+    res.json({
+      success: true,
+      count: count || 0
+    });
+    
+  } catch (error) {
+    console.error('Error in unread count API:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Mark notification as read
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const { error } = await supabase
+      .from('notifications')
+      .update({ 
+        is_read: true, 
+        read_at: new Date().toISOString() 
+      })
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Error marking notification as read:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to mark notification as read'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Notification marked as read'
+    });
+    
+  } catch (error) {
+    console.error('Error in mark as read API:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Create a test notification
+app.post('/api/notifications/test', async (req, res) => {
+  try {
+    const { user_id, title, message } = req.body;
+    
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+    
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id,
+        type: 'system',
+        priority: 'medium',
+        title: title || 'Test Notification',
+        message: message || 'This is a test notification to verify the system is working.',
+        metadata: { test: true }
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating test notification:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create test notification'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data,
+      message: 'Test notification created successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error in test notification API:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// =====================================================
 // START SERVER
 // =====================================================
 

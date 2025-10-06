@@ -57,45 +57,23 @@ export class NotificationService {
     try {
       console.log('🔔 Fetching notifications for user:', userId);
       
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout after 10 seconds')), 10000)
-      );
+      const response = await fetch(`http://localhost:3001/api/notifications?user_id=${userId}&limit=${limit}`);
       
-      const queryPromise = supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
-
-      if (error) {
-        console.error('❌ Error fetching notifications:', error);
-        console.error('Error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
-        
-        // If table doesn't exist yet, silently return empty array
-        if (error.message?.includes('relation "public.notifications" does not exist') || 
-            error.code === '42P01') {
-          console.warn('Notifications table not created yet. Run database/notifications-schema.sql in Supabase.');
-          return [];
-        }
+      const result = await response.json();
+      
+      if (!result.success) {
+        console.error('❌ API error:', result.error);
         return [];
       }
 
-      console.log('✅ Fetched notifications:', data?.length || 0, 'notifications');
-      return data || [];
+      console.log('✅ Fetched notifications:', result.data?.length || 0, 'notifications');
+      return result.data || [];
     } catch (error: any) {
       console.error('❌ Exception in getUserNotifications:', error);
-      if (error.message?.includes('timeout')) {
-        console.error('❌ Query timed out - possible Supabase connection issue');
-      }
       return [];
     }
   }
@@ -107,37 +85,23 @@ export class NotificationService {
     try {
       console.log('🔔 Fetching unread count for user:', userId);
       
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout after 10 seconds')), 10000)
-      );
+      const response = await fetch(`http://localhost:3001/api/notifications/unread-count?user_id=${userId}`);
       
-      const queryPromise = supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('is_read', false);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const { count, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
-
-      if (error) {
-        console.error('❌ Error fetching unread count:', error);
-        
-        // If table doesn't exist yet, silently return 0
-        if (error.message?.includes('relation "public.notifications" does not exist') || 
-            error.code === '42P01') {
-          return 0;
-        }
+      const result = await response.json();
+      
+      if (!result.success) {
+        console.error('❌ API error:', result.error);
         return 0;
       }
 
-      console.log('✅ Unread count:', count);
-      return count || 0;
+      console.log('✅ Unread count:', result.count);
+      return result.count || 0;
     } catch (error: any) {
       console.error('❌ Exception in getUnreadCount:', error);
-      if (error.message?.includes('timeout')) {
-        console.error('❌ Query timed out - possible Supabase connection issue');
-      }
       return 0;
     }
   }
@@ -172,20 +136,19 @@ export class NotificationService {
    */
   static async markAsRead(notificationId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ 
-          is_read: true, 
-          read_at: new Date().toISOString() 
-        })
-        .eq('id', notificationId);
+      const response = await fetch(`http://localhost:3001/api/notifications/${notificationId}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (error) {
-        console.error('Error marking notification as read:', error);
-        return false;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return true;
+      const result = await response.json();
+      return result.success;
     } catch (error) {
       console.error('Error in markAsRead:', error);
       return false;
