@@ -12,6 +12,7 @@ import ProfileDropdown from '@/components/profile/profile-dropdown';
 import ProfileEditModal from '@/components/profile/profile-edit-modal';
 import PasswordChangeModal from '@/components/profile/password-change-modal';
 import { supabase } from '@/lib/supabase';
+import { useStudentAttendance } from '@/hooks/use-student-attendance';
 import { 
   GraduationCap,
   QrCode, 
@@ -32,7 +33,8 @@ import {
   Search,
   Download,
   Eye,
-  ChevronDown
+  ChevronDown,
+  RefreshCw
 } from 'lucide-react';
 
 interface AttendanceRecord {
@@ -43,8 +45,9 @@ interface AttendanceRecord {
   room: string;
   date: string;
   time: string;
-  status: 'present' | 'absent' | 'late';
+  status: 'present' | 'absent' | 'late' | 'excused';
   scanned_at?: string;
+  minutes_late?: number;
 }
 
 interface AttendanceStats {
@@ -52,6 +55,7 @@ interface AttendanceStats {
   present: number;
   absent: number;
   late: number;
+  excused: number;
   attendanceRate: number;
   currentStreak: number;
   longestStreak: number;
@@ -64,6 +68,7 @@ function StudentAttendanceContent() {
     present: 0,
     absent: 0,
     late: 0,
+    excused: 0,
     attendanceRate: 0,
     currentStreak: 0,
     longestStreak: 0
@@ -78,6 +83,15 @@ function StudentAttendanceContent() {
   const [classFilter, setClassFilter] = useState<string>('all');
   const { user, signOut } = useAuth();
   const router = useRouter();
+
+  // Use the real data hook
+  const {
+    attendanceRecords: realAttendanceRecords,
+    stats: realStats,
+    isLoading: dataLoading,
+    error: dataError,
+    refreshData
+  } = useStudentAttendance(user);
 
   // Dark mode setup
   useEffect(() => {
@@ -427,27 +441,26 @@ function StudentAttendanceContent() {
       }
     ];
 
-    setAttendanceRecords(mockRecords);
-    
-    // Calculate stats
-    const totalClasses = mockRecords.length;
-    const present = mockRecords.filter(r => r.status === 'present').length;
-    const absent = mockRecords.filter(r => r.status === 'absent').length;
-    const late = mockRecords.filter(r => r.status === 'late').length;
-    const attendanceRate = totalClasses > 0 ? Math.round((present / totalClasses) * 100) : 0;
-    
-    setStats({
-      totalClasses,
-      present,
-      absent,
-      late,
-      attendanceRate,
-      currentStreak: 3,
-      longestStreak: 8
-    });
-    
-    setIsLoading(false);
+    // Use real data from the hook instead of mock data
+    // The hook will handle loading and error states
   }, [user]);
+
+  // Update local state when real data changes
+  useEffect(() => {
+    if (realAttendanceRecords) {
+      setAttendanceRecords(realAttendanceRecords);
+    }
+    if (realStats) {
+      setStats({
+        ...realStats,
+        currentStreak: 0, // TODO: Calculate current streak from real data
+        longestStreak: 0  // TODO: Calculate longest streak from real data
+      });
+    }
+    if (dataLoading !== undefined) {
+      setIsLoading(dataLoading);
+    }
+  }, [realAttendanceRecords, realStats, dataLoading]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -457,6 +470,8 @@ function StudentAttendanceContent() {
         return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
       case 'absent':
         return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+      case 'excused':
+        return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30';
       default:
         return 'text-slate-600 bg-slate-100 dark:bg-slate-900/30';
     }
@@ -470,6 +485,8 @@ function StudentAttendanceContent() {
         return <Clock className="w-4 h-4" />;
       case 'absent':
         return <XCircle className="w-4 h-4" />;
+      case 'excused':
+        return <AlertCircle className="w-4 h-4" />;
       default:
         return <AlertCircle className="w-4 h-4" />;
     }
@@ -493,6 +510,24 @@ function StudentAttendanceContent() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-200 dark:border-emerald-800 border-t-emerald-600 dark:border-t-emerald-400 mx-auto mb-4"></div>
           <p className="text-slate-700 dark:text-slate-300 font-medium">Loading attendance data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (dataError) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Error Loading Data</h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">
+            {dataError}
+          </p>
+          <Button onClick={refreshData} className="bg-emerald-600 hover:bg-emerald-700">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Try Again
+          </Button>
         </div>
       </div>
     );
@@ -541,16 +576,30 @@ function StudentAttendanceContent() {
                   Classes
                 </Button>
               </Link>
-              <Link href="/student/schedule">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Schedule
-                </Button>
-              </Link>
             </nav>
 
             {/* Right Side Actions */}
             <div className="flex items-center space-x-4">
+              {/* Time */}
+              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
+              {/* Refresh Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshData}
+                disabled={dataLoading}
+                className="hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${dataLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+
               <NotificationPanel />
               <button
                 onClick={toggleDarkMode}
@@ -589,7 +638,7 @@ function StudentAttendanceContent() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
             <div className="flex items-center justify-between h-full">
               <div className="flex-1">
@@ -651,6 +700,25 @@ function StudentAttendanceContent() {
             <div className="flex items-center justify-between h-full">
               <div className="flex-1">
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                  Excused
+                </p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
+                  {stats.excused}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Excused absences
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center ml-4">
+                <AlertCircle className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
                   Current Streak
                 </p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
@@ -695,6 +763,7 @@ function StudentAttendanceContent() {
                 <option value="present">Present</option>
                 <option value="late">Late</option>
                 <option value="absent">Absent</option>
+                <option value="excused">Excused</option>
               </select>
             </div>
 

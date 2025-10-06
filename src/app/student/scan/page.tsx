@@ -29,7 +29,6 @@ import {
   Moon,
   Sun,
   Loader2,
-  RefreshCw,
   Flashlight,
   FlashlightOff
 } from 'lucide-react';
@@ -424,19 +423,6 @@ function StudentScanContent() {
     }
   };
 
-  const simulateQRScan = () => {
-    // For testing purposes, you can still use this to test the UI
-    // But in production, this should be replaced with real camera scanning
-    const mockQRData = JSON.stringify({
-      sessionId: '13a09388-ac1a-4e08-8ddf-7a71f2bf318e',
-      timestamp: Date.now(),
-      nonce: 'test-nonce',
-      signature: 'test-signature',
-      expiresAt: new Date(Date.now() + 30000).toISOString()
-    });
-    
-    processQRCode(mockQRData);
-  };
 
   const toggleFlashlight = () => {
     setFlashlightOn(!flashlightOn);
@@ -512,16 +498,18 @@ function StudentScanContent() {
                   Classes
                 </Button>
               </Link>
-              <Link href="/student/schedule">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Schedule
-                </Button>
-              </Link>
             </nav>
 
             {/* Right Side Actions */}
             <div className="flex items-center space-x-4">
+              {/* Time */}
+              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
               <NotificationPanel />
               <button
                 onClick={toggleDarkMode}
@@ -632,15 +620,6 @@ function StudentScanContent() {
                     Stop Scanning
                   </Button>
                 )}
-                
-                <Button
-                  onClick={simulateQRScan}
-                  variant="outline"
-                  className="border-slate-300 dark:border-slate-600"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Simulate Scan
-                </Button>
               </div>
 
               {/* Scan Result */}

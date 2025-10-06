@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:frontend": "next dev",
-    "dev:backend": "nodemon backend/optimized-server.js",
+    "dev:frontend": "next dev -p 3000",
+    "dev:backend": "PORT=3001 nodemon backend/optimized-server.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

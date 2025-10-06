@@ -18,6 +18,15 @@ const sessionManagementAPI = require('./session-management-api.js');
 // Import the attendance API
 const attendanceAPI = require('./attendance-api.js');
 
+// Import the student classes API
+const studentClassesAPI = require('./student-classes-api.js');
+
+// Import the student class detail API
+const studentClassDetailAPI = require('./student-class-detail-api.js');
+
+// Import the student dashboard API (commented out - using frontend service instead)
+// const studentDashboardAPI = require('./student-dashboard-api.js');
+
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
@@ -83,7 +92,18 @@ class QRCodeGenerator {
 }
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https://*.supabase.co", "http://localhost:*", "ws://localhost:*"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      fontSrc: ["'self'", "data:"],
+    },
+  },
+}));
 app.use(cors({
   origin: process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3000",
   credentials: true
@@ -91,10 +111,14 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Rate limiting
+// Rate limiting - More lenient for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs (increased for development)
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  }
 });
 app.use('/api/', limiter);
 
@@ -114,6 +138,9 @@ app.get('/api/health', (req, res) => {
 app.use('/', classManagementAPI);
 app.use('/', sessionManagementAPI.router);
 app.use('/', attendanceAPI);
+app.use('/', studentClassesAPI);
+app.use('/', studentClassDetailAPI);
+// app.use('/', studentDashboardAPI); // Commented out - using frontend service instead
 
 // =====================================================
 // USER MANAGEMENT ENDPOINTS

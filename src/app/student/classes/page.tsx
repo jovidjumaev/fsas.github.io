@@ -11,73 +11,42 @@ import { NotificationPanel } from '@/components/notifications/notification-panel
 import ProfileDropdown from '@/components/profile/profile-dropdown';
 import ProfileEditModal from '@/components/profile/profile-edit-modal';
 import PasswordChangeModal from '@/components/profile/password-change-modal';
+import { ClassCardOptimized } from '@/components/student/class-card-optimized';
+import { useStudentClasses } from '@/hooks/use-student-classes';
 import { supabase } from '@/lib/supabase';
 import { 
   GraduationCap,
-  QrCode, 
   Calendar,
   TrendingUp,
   Clock,
-  MapPin,
-  User,
   BookOpen,
   BarChart3,
   Home,
   Moon,
   Sun,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
   Search,
-  Filter,
-  Eye,
-  Star,
-  Users,
-  Bookmark
+  RefreshCw,
+  AlertCircle,
+  QrCode
 } from 'lucide-react';
 
-interface ClassInfo {
-  id: string;
-  class_code: string;
-  class_name: string;
-  professor: string;
-  professor_email: string;
-  room: string;
-  schedule: string;
-  credits: number;
-  description: string;
-  attendance_rate: number;
-  total_sessions: number;
-  attended_sessions: number;
-  last_attended?: string;
-  is_favorite: boolean;
-}
-
-interface ClassStats {
-  totalClasses: number;
-  averageAttendance: number;
-  favoriteClasses: number;
-  upcomingClasses: number;
-}
-
 function StudentClassesContent() {
-  const [classes, setClasses] = useState<ClassInfo[]>([]);
-  const [stats, setStats] = useState<ClassStats>({
-    totalClasses: 0,
-    averageAttendance: 0,
-    favoriteClasses: 0,
-    upcomingClasses: 0
-  });
-  const [isLoading, setIsLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<string>('name');
-  const [filterBy, setFilterBy] = useState<string>('all');
+  const [academicPeriodFilter, setAcademicPeriodFilter] = useState<string>('all');
   const { user, signOut } = useAuth();
   const router = useRouter();
+
+  const {
+    classes,
+    stats,
+    isLoading,
+    error,
+    refreshData
+  } = useStudentClasses(user);
 
   // Dark mode setup
   useEffect(() => {
@@ -261,152 +230,22 @@ function StudentClassesContent() {
     }
   };
 
-  const toggleFavorite = (classId: string) => {
-    setClasses(prev => prev.map(cls => 
-      cls.id === classId 
-        ? { ...cls, is_favorite: !cls.is_favorite }
-        : cls
-    ));
-  };
-
   useEffect(() => {
     fetchUserProfile();
-    
-    // Mock class data
-    const mockClasses: ClassInfo[] = [
-      {
-        id: '1',
-        class_code: 'CSC-475',
-        class_name: 'Seminar in Computer Science',
-        professor: 'Dr. Sarah Johnson',
-        professor_email: 'sarah.johnson@furman.edu',
-        room: 'Room 101',
-        schedule: 'Mon, Wed, Fri 10:00 AM - 10:50 AM',
-        credits: 3,
-        description: 'Advanced topics in computer science with focus on research methodologies and current trends.',
-        attendance_rate: 95,
-        total_sessions: 20,
-        attended_sessions: 19,
-        last_attended: '2024-01-15',
-        is_favorite: true
-      },
-      {
-        id: '2',
-        class_code: 'CSC-301',
-        class_name: 'Data Structures',
-        professor: 'Dr. Michael Chen',
-        professor_email: 'michael.chen@furman.edu',
-        room: 'Room 205',
-        schedule: 'Mon, Wed, Fri 2:00 PM - 2:50 PM',
-        credits: 4,
-        description: 'Fundamental data structures and algorithms with practical implementations.',
-        attendance_rate: 88,
-        total_sessions: 20,
-        attended_sessions: 17,
-        last_attended: '2024-01-15',
-        is_favorite: false
-      },
-      {
-        id: '3',
-        class_code: 'MAT-201',
-        class_name: 'Calculus II',
-        professor: 'Dr. Emily Davis',
-        professor_email: 'emily.davis@furman.edu',
-        room: 'Room 301',
-        schedule: 'Mon, Wed, Fri 4:00 PM - 4:50 PM',
-        credits: 4,
-        description: 'Continuation of Calculus I with integration techniques and applications.',
-        attendance_rate: 75,
-        total_sessions: 20,
-        attended_sessions: 15,
-        last_attended: '2024-01-15',
-        is_favorite: false
-      },
-      {
-        id: '4',
-        class_code: 'PHY-101',
-        class_name: 'Physics I',
-        professor: 'Dr. Robert Wilson',
-        professor_email: 'robert.wilson@furman.edu',
-        room: 'Room 401',
-        schedule: 'Tue, Thu 11:00 AM - 12:15 PM',
-        credits: 4,
-        description: 'Mechanics, thermodynamics, and wave motion with laboratory component.',
-        attendance_rate: 92,
-        total_sessions: 16,
-        attended_sessions: 15,
-        last_attended: '2024-01-14',
-        is_favorite: true
-      },
-      {
-        id: '5',
-        class_code: 'ENG-201',
-        class_name: 'Technical Writing',
-        professor: 'Dr. Lisa Anderson',
-        professor_email: 'lisa.anderson@furman.edu',
-        room: 'Room 102',
-        schedule: 'Tue, Thu 1:00 PM - 2:15 PM',
-        credits: 3,
-        description: 'Professional writing skills for technical and scientific communication.',
-        attendance_rate: 100,
-        total_sessions: 16,
-        attended_sessions: 16,
-        last_attended: '2024-01-14',
-        is_favorite: true
-      }
-    ];
-
-    setClasses(mockClasses);
-    
-    // Calculate stats
-    const totalClasses = mockClasses.length;
-    const averageAttendance = Math.round(
-      mockClasses.reduce((sum, cls) => sum + cls.attendance_rate, 0) / totalClasses
-    );
-    const favoriteClasses = mockClasses.filter(cls => cls.is_favorite).length;
-    const upcomingClasses = 3; // Mock upcoming classes today
-    
-    setStats({
-      totalClasses,
-      averageAttendance,
-      favoriteClasses,
-      upcomingClasses
-    });
-    
-    setIsLoading(false);
   }, [user]);
 
-  const getAttendanceColor = (rate: number) => {
-    if (rate >= 90) return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900';
-    if (rate >= 75) return 'text-amber-600 bg-amber-100 dark:bg-amber-900';
-    return 'text-red-600 bg-red-100 dark:bg-red-900';
-  };
+  // Get unique academic periods for filter options
+  const academicPeriods = Array.from(new Set(classes.map(cls => cls.academic_period))).sort();
 
+  // Filter classes based on search term and academic period
   const filteredClasses = classes.filter(cls => {
     const matchesSearch = cls.class_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cls.class_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cls.professor.toLowerCase().includes(searchTerm.toLowerCase());
     
-    if (filterBy === 'favorites') return matchesSearch && cls.is_favorite;
-    if (filterBy === 'high-attendance') return matchesSearch && cls.attendance_rate >= 90;
-    if (filterBy === 'low-attendance') return matchesSearch && cls.attendance_rate < 75;
+    const matchesAcademicPeriod = academicPeriodFilter === 'all' || cls.academic_period === academicPeriodFilter;
     
-    return matchesSearch;
-  });
-
-  const sortedClasses = [...filteredClasses].sort((a, b) => {
-    switch (sortBy) {
-      case 'name':
-        return a.class_name.localeCompare(b.class_name);
-      case 'code':
-        return a.class_code.localeCompare(b.class_code);
-      case 'attendance':
-        return b.attendance_rate - a.attendance_rate;
-      case 'professor':
-        return a.professor.localeCompare(b.professor);
-      default:
-        return 0;
-    }
+    return matchesSearch && matchesAcademicPeriod;
   });
 
   if (isLoading) {
@@ -414,7 +253,25 @@ function StudentClassesContent() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-200 dark:border-emerald-800 border-t-emerald-600 dark:border-t-emerald-400 mx-auto mb-4"></div>
-          <p className="text-slate-700 dark:text-slate-300 font-medium">Loading classes...</p>
+          <p className="text-slate-700 dark:text-slate-300 font-medium">Loading your classes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+            Error Loading Classes
+          </h2>
+          <p className="text-slate-600 dark:text-slate-400 mb-4">{error}</p>
+          <Button onClick={refreshData} variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Try Again
+          </Button>
         </div>
       </div>
     );
@@ -463,16 +320,18 @@ function StudentClassesContent() {
                   Classes
                 </Button>
               </Link>
-              <Link href="/student/schedule">
-                <Button variant="ghost" size="sm" className="hover:bg-slate-100 dark:hover:bg-slate-700">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Schedule
-                </Button>
-              </Link>
             </nav>
 
             {/* Right Side Actions */}
             <div className="flex items-center space-x-4">
+              {/* Time */}
+              <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <Clock className="w-4 h-4 text-slate-500" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
               <NotificationPanel />
               <button
                 onClick={toggleDarkMode}
@@ -502,16 +361,30 @@ function StudentClassesContent() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
-            My Classes
-          </h1>
-          <p className="text-xl text-slate-600 dark:text-slate-400">
-            Manage and track your enrolled classes
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-2">
+                My Classes
+              </h1>
+              <p className="text-xl text-slate-600 dark:text-slate-400">
+                View and manage your enrolled classes
+              </p>
+            </div>
+            <Button
+              onClick={refreshData}
+              variant="outline"
+              size="sm"
+              className="hover:bg-slate-100 dark:hover:bg-slate-700"
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
             <div className="flex items-center justify-between h-full">
               <div className="flex-1">
@@ -554,32 +427,13 @@ function StudentClassesContent() {
             <div className="flex items-center justify-between h-full">
               <div className="flex-1">
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
-                  Favorites
-                </p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
-                  {stats.favoriteClasses}
-                </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Starred classes
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900 rounded-xl flex items-center justify-center ml-4">
-                <Star className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200 h-32">
-            <div className="flex items-center justify-between h-full">
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
-                  Upcoming
+                  Active Classes
                 </p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">
                   {stats.upcomingClasses}
                 </p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Classes today
+                  Currently enrolled
                 </p>
               </div>
               <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center ml-4">
@@ -589,156 +443,61 @@ function StudentClassesContent() {
           </Card>
         </div>
 
-        {/* Filters and Search */}
+        {/* Search and Filters */}
         <Card className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 mb-8">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search classes, professors..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                />
+          <div className="space-y-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search classes, professors, or course codes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+            
+            {/* Academic Period Filter */}
+            {academicPeriods.length > 0 && (
+              <div className="flex items-center space-x-3">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Academic Period:</span>
+                <select
+                  value={academicPeriodFilter}
+                  onChange={(e) => setAcademicPeriodFilter(e.target.value)}
+                  className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="all">All Periods</option>
+                  {academicPeriods.map((period) => (
+                    <option key={period} value={period}>
+                      {period}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
-
-            {/* Filter */}
-            <div className="lg:w-48">
-              <select
-                value={filterBy}
-                onChange={(e) => setFilterBy(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                <option value="all">All Classes</option>
-                <option value="favorites">Favorites Only</option>
-                <option value="high-attendance">High Attendance (90%+)</option>
-                <option value="low-attendance">Low Attendance (&lt;75%)</option>
-              </select>
-            </div>
-
-            {/* Sort */}
-            <div className="lg:w-48">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                <option value="name">Sort by Name</option>
-                <option value="code">Sort by Code</option>
-                <option value="attendance">Sort by Attendance</option>
-                <option value="professor">Sort by Professor</option>
-              </select>
-            </div>
+            )}
           </div>
         </Card>
 
         {/* Classes Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedClasses.map((classInfo) => (
-            <Card key={classInfo.id} className="p-6 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all duration-200">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                      {classInfo.class_code}
-                    </h3>
-                    <button
-                      onClick={() => toggleFavorite(classInfo.id)}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                    >
-                      <Star 
-                        className={`w-4 h-4 ${
-                          classInfo.is_favorite 
-                            ? 'text-amber-500 fill-amber-500' 
-                            : 'text-slate-400 hover:text-amber-500'
-                        }`} 
-                      />
-                    </button>
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    {classInfo.class_name}
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
-                    {classInfo.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3 mb-4">
-                <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                  <User className="w-4 h-4 mr-2" />
-                  <span>{classInfo.professor}</span>
-                </div>
-                <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  <span>{classInfo.room}</span>
-                </div>
-                <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                  <Clock className="w-4 h-4 mr-2" />
-                  <span>{classInfo.schedule}</span>
-                </div>
-                <div className="flex items-center text-sm text-slate-600 dark:text-slate-400">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  <span>{classInfo.credits} credits</span>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    Attendance
-                  </span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAttendanceColor(classInfo.attendance_rate)}`}>
-                    {classInfo.attendance_rate}%
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all duration-500 ${
-                      classInfo.attendance_rate >= 90 ? 'bg-emerald-500' :
-                      classInfo.attendance_rate >= 75 ? 'bg-amber-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${classInfo.attendance_rate}%` }}
-                  ></div>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {classInfo.attended_sessions} of {classInfo.total_sessions} sessions
-                </p>
-              </div>
-
-              <div className="flex space-x-2">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white"
-                  size="sm"
-                >
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Scan QR
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="border-slate-300 dark:border-slate-600"
-                >
-                  <Eye className="w-4 h-4" />
-                </Button>
-              </div>
-            </Card>
+          {filteredClasses.map((classData) => (
+            <ClassCardOptimized key={classData.id} classData={classData} />
           ))}
         </div>
 
-        {sortedClasses.length === 0 && (
+        {filteredClasses.length === 0 && !isLoading && (
           <Card className="p-12 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
             <div className="text-center">
               <BookOpen className="w-16 h-16 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                No classes found
+                {searchTerm || academicPeriodFilter !== 'all' ? 'No classes found' : 'No classes enrolled'}
               </h3>
               <p className="text-slate-600 dark:text-slate-400">
-                Try adjusting your search or filter criteria
+                {searchTerm || academicPeriodFilter !== 'all'
+                  ? 'Try adjusting your search criteria or academic period filter' 
+                  : 'You are not currently enrolled in any classes. Contact your professor to be added to a class.'
+                }
               </p>
             </div>
           </Card>

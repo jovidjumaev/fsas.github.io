@@ -1,8 +1,9 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
-  "/professor/sessions/page": "app/professor/sessions/page.js",
-  "/professor/sessions/[sessionId]/page": "app/professor/sessions/[sessionId]/page.js",
+  "/student/login/page": "app/student/login/page.js",
+  "/student/dashboard/page": "app/student/dashboard/page.js",
+  "/page": "app/page.js",
   "/professor/classes/page": "app/professor/classes/page.js",
-  "/professor/analytics/page": "app/professor/analytics/page.js",
-  "/professor/classes/[classId]/page": "app/professor/classes/[classId]/page.js"
+  "/professor/login/page": "app/professor/login/page.js",
+  "/professor/dashboard/page": "app/professor/dashboard/page.js"
 }
