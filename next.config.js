@@ -23,6 +23,10 @@ const nextConfig = {
   output: 'export',
   trailingSlash: true,
   distDir: 'out',
+  // Skip static optimization for dynamic routes
+  experimental: {
+    skipTrailingSlashRedirect: true,
+  },
   // Remove rewrites for static export
   // async rewrites() {
   //   return [
