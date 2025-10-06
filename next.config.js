@@ -26,6 +26,12 @@ const nextConfig = {
       },
     ];
   },
+  // GitHub Pages configuration
+  output: 'export',
+  trailingSlash: true,
+  images: {
+    unoptimized: true
+  }
 };
 
 module.exports = withPWA(nextConfig);
