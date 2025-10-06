@@ -83,15 +83,6 @@ export default function LoginPage() {
           </div>
         </Card>
 
-        {/* Debug links */}
-        <div className="text-center space-x-4">
-          <Link href="/debug-env" className="text-sm text-gray-500 hover:text-gray-700">
-            Debug Environment
-          </Link>
-          <Link href="/debug-page" className="text-sm text-gray-500 hover:text-gray-700">
-            Debug Page
-          </Link>
-        </div>
       </div>
     </div>
   );

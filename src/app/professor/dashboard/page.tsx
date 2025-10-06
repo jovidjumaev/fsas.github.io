@@ -628,7 +628,7 @@ function ProfessorDashboardContent() {
               </p>
             </div>
             <div className="flex items-center space-x-3">
-              <Link href="/professor/sessions/new">
+              <Link href="/professor/sessions">
                 <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200">
                   <QrCode className="w-5 h-5 mr-2" />
                   Start Session
@@ -882,12 +882,12 @@ function ProfessorDashboardContent() {
                   <p className="text-slate-500 dark:text-slate-400 mb-4">
                     Start a session to begin tracking attendance
                   </p>
-                  <Link href="/professor/sessions/new">
+                  <Link href="/professor/sessions">
                     <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
                       <QrCode className="w-4 h-4 mr-2" />
                       Start Session
-                  </Button>
-                </Link>
+                    </Button>
+                  </Link>
               </div>
               ) : (
               <div className="space-y-3">

@@ -394,12 +394,6 @@ export default function RegisterPage() {
           </div>
         </Card>
 
-        {/* Debug Link */}
-        <div className="text-center">
-          <Link href="/debug-page" className="text-sm text-gray-500 hover:text-gray-700">
-            Debug Page
-          </Link>
-        </div>
       </div>
     </div>
   );
