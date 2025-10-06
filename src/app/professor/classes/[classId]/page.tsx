@@ -16,6 +16,13 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import ProfessorHeader from '@/components/professor/professor-header';
 
+// Required for static export
+export async function generateStaticParams() {
+  return [
+    { classId: 'placeholder' }
+  ];
+}
+
 interface ClassData {
   id: string;
   course_id: string;

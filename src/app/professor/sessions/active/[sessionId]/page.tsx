@@ -18,6 +18,13 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import io from 'socket.io-client';
 
+// Required for static export
+export async function generateStaticParams() {
+  return [
+    { sessionId: 'placeholder' }
+  ];
+}
+
 interface ActiveSessionData {
   id: string;
   class_id: string;

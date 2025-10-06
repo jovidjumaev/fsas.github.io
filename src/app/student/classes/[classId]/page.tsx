@@ -25,6 +25,13 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+// Required for static export
+export async function generateStaticParams() {
+  return [
+    { classId: 'placeholder' }
+  ];
+}
+
 function ClassDetailContent() {
   const params = useParams();
   const router = useRouter();

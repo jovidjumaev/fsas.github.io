@@ -14,6 +14,13 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import ProfessorHeader from '@/components/professor/professor-header';
 
+// Required for static export
+export async function generateStaticParams() {
+  return [
+    { sessionId: 'placeholder' }
+  ];
+}
+
 interface SessionData {
   id: string;
   class_instance_id: string;
